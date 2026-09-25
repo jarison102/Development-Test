@@ -43,7 +43,8 @@ beforeEach(() => {
   jest.mocked(createTransaction).mockReset().mockResolvedValue(record)
   jest.mocked(getTransaction).mockReset().mockResolvedValue(record)
   jest.mocked(getPaymentTerms).mockReset().mockResolvedValue({ privacy: 'https://example.test/privacy',
-    personal: 'https://example.test/personal', publicKey: 'public-test-placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1' })
+    personal: 'https://example.test/personal', publicKey: 'public-test-placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1',
+    tokenizationKey: 'pem-placeholder' })
   jest.mocked(tokenizeCard).mockReset().mockResolvedValue('tok_test_mock')
   jest.mocked(payTransaction).mockReset().mockResolvedValue(record)
   jest.mocked(checkPayment).mockReset().mockResolvedValue(record)

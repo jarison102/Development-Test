@@ -69,6 +69,26 @@ export class SandboxPaymentAdapter implements PaymentGatewayPort {
       currency: raw.currency, status: raw.status as ProviderPayment['status'] }
   }
 
+  async tokenizationKey(): Promise<string> {
+    this.ensureSandbox()
+    const data = await this.request('/tokens/keys/tokenization', this.publicKey) as { publicKey?: string }
+    if (typeof data?.publicKey !== 'string' || !data.publicKey.includes('BEGIN PUBLIC KEY')) {
+      throw new BadGatewayException('Llave de tokenización de Wompi inválida')
+    }
+    return data.publicKey
+  }
+
+  async tokenizeCard(payload: string): Promise<string> {
+    this.ensureSandbox()
+    const data = await this.request('/tokens/cards', this.publicKey, {
+      method: 'POST', body: JSON.stringify({ payload }),
+    }) as { id?: string }
+    if (typeof data?.id !== 'string' || !/^tok_(?!prod_)[a-zA-Z0-9_-]+$/.test(data.id)) {
+      throw new BadGatewayException('Wompi no devolvió un token de tarjeta válido')
+    }
+    return data.id
+  }
+
   async create(input: { reference: string; amountInCents: number; email: string; cardToken: string; installments: number; terms: Terms }) {
     this.ensureSandbox()
     const body = {

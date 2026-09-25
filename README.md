@@ -14,7 +14,7 @@ pages/  ProductPage              controllers  ── HTTP /api ──►        
 store/  redux slices (memoria)   common/http  (filtro de errores)     payment_attempts
         persistence (localStorage, sin tarjeta)
 services/ api.ts, card.ts,
-          payments.service.ts (JWE directo a Wompi)
+          payments.service.ts (JWE en navegador → proxy backend → Wompi)
 ```
 
 - Frontend: React 19 + TypeScript + Vite, Redux Toolkit, React Router, Jest + Testing Library, Oxlint.
@@ -93,7 +93,8 @@ Base `http://localhost:3000/api`. Respuestas envueltas en `{ data: ... }`; error
 | POST | `/transacciones` | Crear transacción `PENDIENTE`; acepta `Idempotency-Key` |
 | GET | `/transacciones/:id` | Consultar transacción |
 | POST | `/entregas` | Crear entrega (solo transacción `APROBADA`, una por compra) |
-| GET | `/payments/terms` | Documentos de aceptación vigentes + configuración pública Sandbox |
+| GET | `/payments/terms` | Documentos de aceptación vigentes + configuración pública Sandbox + llave pública de tokenización |
+| POST | `/payments/tokenize` | Reenvía el JWE de tarjeta a Wompi y devuelve solo el `tok_*`; no descifra ni persiste |
 | POST | `/payments/:id` | Procesar pago; **exige** `Idempotency-Key` de la orden |
 | GET | `/payments/:id` | Verificar estado del pago contra el proveedor; **exige** `Idempotency-Key` |
 
@@ -112,7 +113,7 @@ ProductPage   → stock actualizado al volver
 ```
 
 1. `POST /api/transacciones` crea una `PENDIENTE` con referencia `sha256("checkout:" + Idempotency-Key)`; reintentos con la misma clave devuelven la misma orden.
-2. React mantiene la tarjeta **solo en memoria**; la cifra como JWE (`RSA-OAEP-256`/`A256GCM`, WebCrypto) con la llave de `GET /tokens/keys/tokenization` y la envía **directamente** a `POST /tokens/cards` del Sandbox. Nuestros endpoints de negocio nunca reciben PAN/CVC.
+2. React mantiene la tarjeta **solo en memoria**; la cifra como JWE (`RSA-OAEP-256`/`A256GCM`, WebCrypto) con la llave pública de tokenización que el backend obtiene de `GET /tokens/keys/tokenization` y expone en `GET /api/payments/terms`. El JWE se envía a `POST /api/payments/tokenize`, que lo reenvía a `POST /tokens/cards` del Sandbox y devuelve solo el `tok_*` (los endpoints de tokenización de Wompi no son legibles desde el navegador por CORS). Nuestros endpoints de negocio nunca reciben PAN/CVC y el JWE no se descifra, persiste ni registra.
 3. `POST /api/payments/:id` valida clave, documentos de aceptación vigentes (`GET /merchants/info`), reserva disponibilidad con `SELECT ... FOR UPDATE` + `payment_attempts`, y crea el pago con firma `sha256(referencia + centavos + COP + secreto)` calculada en el backend.
 4. `APPROVED` → una transacción de base de datos descuenta stock (`stock >= cantidad`), marca `APROBADA` y crea una entrega `PENDIENTE` una sola vez. `DECLINED`/`VOIDED`/`ERROR` → `RECHAZADA`, sin descuento ni entrega. `PENDING` no liquida nada: `GET /api/payments/:id` consulta al proveedor con llave privada y concilia.
 5. Tras refresh se restauran producto, cliente, entrega, paso, `Idempotency-Key` e id de transacción; **la tarjeta debe reintroducirse**.
@@ -120,7 +121,7 @@ ProductPage   → stock actualizado al volver
 ## Integración Sandbox
 
 - URL/llaves validadas como pareja por ambiente; producción y mezclas se rechazan.
-- Tokenización cifrada JWE directa desde el navegador; el backend recibe solo el `tok_*`.
+- Tokenización: JWE cifrado en el navegador, reenviado por el backend a Wompi; el navegador solo recibe el `tok_*` y el backend nunca ve PAN/CVC.
 - Los tokens de aceptación se obtienen en cada pago con `GET /merchants/info`; no se exponen al frontend ni se persisten.
 - Tarjetas oficiales de prueba: `4242 4242 4242 4242` (aprobada), `4111 1111 1111 1111` (rechazada); verificación real ejecutada: DECLINED dejó stock 10→10 sin entrega; APPROVED dejó stock 10→9 con una entrega `PENDIENTE` e id externo registrado.
 - Diferencias con el PDF (oct 2025): el PDF usa URLs/credenciales UAT compartidas; la documentación vigente recomienda JWE, usa `/merchants/info` (el endpoint `/merchants/:publicKey` será retirado) y exige consultar transacciones externas desde el backend con llave privada. Las credenciales del PDF solo se configuran manualmente en `backend/.env`, nunca en código, docs ni tests.
@@ -145,8 +146,8 @@ Todo es con mocks: sin Internet, sin escrituras en MySQL, sin pagos reales.
 
 | Proyecto | Stmts | Branches | Funcs | Lines |
 |---|---|---|---|---|
-| Frontend | 92.82% | 85.09% | 94.01% | 97.74% |
-| Backend | 97.17% | 91.61% | 96.55% | 98.43% |
+| Frontend | 93.15% | 85.58% | 94.01% | 97.71% |
+| Backend | 96.75% | 91.92% | 92.42% | 98.05% |
 
 Cubren: validación de tarjeta (Luhn/fechas/CVC/cuotas), tokenización JWE, firma de integridad, parejas URL/llaves por ambiente, contratos HTTP, idempotencia, reserva concurrente con stock 1, transiciones PENDING→APPROVED/DECLINED/VOIDED/ERROR, errores del proveedor, refresh/recuperación y ausencia de datos sensibles persistidos.
 
@@ -164,6 +165,6 @@ No realizado (fuera del alcance de esta fase). Antes de cualquier despliegue pro
 
 - **Reserva lógica (`payment_attempts`) en vez de descontar stock al iniciar el pago**: el stock físico solo se toca tras `APPROVED` confirmado; con concurrencia sobre la última unidad, como máximo una orden puede aprobarse (serialización `FOR UPDATE` + `updateMany` condicionado).
 - **Referencia = hash de la Idempotency-Key**: reintentos, doble clic y refresh reutilizan la misma orden sin crear cobros ni entregas duplicadas.
-- **Tokenización directa navegador→Wompi**: minimiza exposición de la tarjeta; nuestro backend solo ve `tok_*`.
+- **Tokenización navegador→backend→Wompi**: los endpoints `/tokens/*` del Sandbox no exponen CORS legible para el navegador (el preflight pasa pero la respuesta real no incluye `Access-Control-Allow-Origin`). Se eligió cifrar el JWE en el navegador y reenviarlo desde el backend, de modo que el PAN nunca llega a un endpoint de negocio y el backend solo maneja ciphertext → `tok_*`.
 - **Errores de red ambiguos no reintentan a ciegas**: la reserva queda activa para conciliación manual y evita cargos duplicados.
 - **Estado de tarjeta fuera de Redux**: variable de módulo en memoria, borrada tras tokenizar o al abandonar el flujo.

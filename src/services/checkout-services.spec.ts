@@ -14,7 +14,7 @@ const apiTransaction = { id: 18, referencia: 'ref-1', productoId: 1, clienteId: 
   subtotal: '500000.00', tarifaBase: '1500.00', tarifaEnvio: '5000.00', total: '506500.00',
   estado: 'PENDIENTE', idTransaccionExterna: null }
 const terms = { privacy: 'https://example.test/privacy', personal: 'https://example.test/personal',
-  publicKey: 'pub_test_placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1' }
+  publicKey: 'pub_test_placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1', tokenizationKey: 'pem-placeholder' }
 const delivery = { address: 'Calle 1', city: 'Bogotá', department: 'Cundinamarca', postalCode: '110111' }
 
 beforeEach(() => mockFetch.mockReset())

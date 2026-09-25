@@ -68,7 +68,7 @@ export function CheckoutPage() {
       <section className="page-section">
         <span className="eyebrow">Paso 2 de 4</span>
         <h1>Tarjeta y entrega</h1>
-        <p>La tarjeta solo permanece en memoria hasta tokenizarse directamente con Wompi Sandbox. Si recargas, vuelve a introducirla.</p>
+        <p>La tarjeta solo permanece en memoria; se cifra como JWE en el navegador y se tokeniza en Wompi Sandbox a través del backend. Si recargas, vuelve a introducirla.</p>
         <form onSubmit={(event) => void submit(event)} autoComplete="off">
           <div className="form-grid">
             <section className="panel" aria-labelledby="card-heading">

@@ -1,5 +1,11 @@
 import { Equals, IsInt, IsOptional, IsString, IsUrl, Matches, Max, MaxLength, Min } from 'class-validator'
 
+export class TokenizeDto {
+  @Matches(/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/)
+  @MaxLength(8192)
+  payload!: string
+}
+
 export class PayDto {
   @Matches(/^tok_(?!prod_)[a-zA-Z0-9_-]{1,150}$/)
   cardToken!: string

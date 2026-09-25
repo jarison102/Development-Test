@@ -5,6 +5,8 @@ import { CrearCliente } from '../../clientes/application/crear-cliente.use-case'
 import { ClientesController } from '../../clientes/clientes.controller'
 import { CrearEntrega } from '../../entregas/application/crear-entrega.use-case'
 import { EntregasController } from '../../entregas/entregas.controller'
+import { PaymentsController } from '../../payments/payments.controller'
+import { PaymentsUseCases } from '../../payments/application/payments.use-cases'
 import { ListarProductos, ObtenerProducto } from '../../productos/application/productos.use-cases'
 import { ProductosController } from '../../productos/productos.controller'
 import { CotizarTransaccion, CrearTransaccion, ObtenerTransaccion } from '../../transacciones/application/transacciones.use-cases'
@@ -17,7 +19,7 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      controllers: [ProductosController, ClientesController, TransaccionesController, EntregasController],
+      controllers: [ProductosController, ClientesController, TransaccionesController, EntregasController, PaymentsController],
       providers: [
         { provide: ListarProductos, useValue: { execute: async () => [{ id: 1, nombre: 'Producto' }] } },
         { provide: ObtenerProducto, useValue: { execute: async () => ({ id: 1, nombre: 'Producto' }) } },
@@ -26,6 +28,8 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
         { provide: CrearTransaccion, useValue: { execute: createExecute } },
         { provide: ObtenerTransaccion, useValue: { execute: async () => ({ id: 3, estado: 'PENDIENTE' }) } },
         { provide: CrearEntrega, useValue: { execute: async () => ({ id: 4, estado: 'PENDIENTE' }) } },
+        { provide: PaymentsUseCases, useValue: { terms: async () => ({ privacy: 'https://e.test/p' }),
+          tokenize: async () => ({ token: 'tok_test_mock' }), pay: jest.fn(), check: jest.fn() } },
       ],
     }).compile()
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter())
@@ -102,6 +106,22 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
     expect(producto.json().data.id).toBe(1)
     expect(entrega.statusCode).toBe(201)
     expect(entrega.json().data.estado).toBe('PENDIENTE')
+  })
+
+  it('reexpone la tokenización: devuelve el token y valida el JWE', async () => {
+    const okResponse = await app.inject({ method: 'POST', url: '/api/payments/tokenize', payload: {
+      payload: 'aaa.bbb.ccc.ddd.eee',
+    } })
+    const bad = await app.inject({ method: 'POST', url: '/api/payments/tokenize', payload: {
+      payload: 'no-es-jwe',
+    } })
+    const card = await app.inject({ method: 'POST', url: '/api/payments/tokenize', payload: {
+      payload: '4242 4242 4242 4242',
+    } })
+    expect(okResponse.statusCode).toBe(201)
+    expect(okResponse.json()).toEqual({ data: { token: 'tok_test_mock' } })
+    expect(bad.statusCode).toBe(400)
+    expect(card.statusCode).toBe(400)
   })
 
   it('rechaza una entrega con cuerpo incompleto', async () => {

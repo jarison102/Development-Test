@@ -3,7 +3,8 @@ import type { TransactionRecord } from '../types/transaction'
 import { ApiError, apiRequest } from './api'
 import type { Card } from './card'
 
-export type PaymentTerms = { privacy: string; personal: string; publicKey: string; sandboxUrl: string }
+export type PaymentTerms = { privacy: string; personal: string; publicKey: string; sandboxUrl: string
+  tokenizationKey: string }
 
 export function getPaymentTerms() { return apiRequest<PaymentTerms>('/payments/terms') }
 
@@ -35,18 +36,12 @@ export async function tokenizeCard(card: Card, terms: PaymentTerms): Promise<str
     && terms.publicKey.startsWith('pub_stagtest_')
   if (!publicSandbox && !testUat) throw new ApiError('Configuración Sandbox inválida.')
   try {
-    const headers = { Authorization: `Bearer ${terms.publicKey}`, 'Content-Type': 'application/json' }
-    const keyResponse = await fetch(`${terms.sandboxUrl}/tokens/keys/tokenization`, { headers, signal: AbortSignal.timeout(10000) })
-    if (!keyResponse.ok) throw new Error()
-    const key = (await keyResponse.json() as { data?: { publicKey?: string } }).data?.publicKey
-    if (!key) throw new Error()
-    const payload = await encryptCard(card, key)
-    const response = await fetch(`${terms.sandboxUrl}/tokens/cards`, { method: 'POST', headers,
-      body: JSON.stringify({ payload }), signal: AbortSignal.timeout(10000) })
-    if (!response.ok) throw new Error()
-    const token = (await response.json() as { data?: { id?: string } }).data?.id
-    if (!token || !/^tok_(?!prod_)[a-zA-Z0-9_-]+$/.test(token)) throw new Error()
-    return token
+    const payload = await encryptCard(card, terms.tokenizationKey)
+    const result = await apiRequest<{ token: string }>('/payments/tokenize', {
+      method: 'POST', body: JSON.stringify({ payload }),
+    })
+    if (!/^tok_(?!prod_)[a-zA-Z0-9_-]+$/.test(result.token)) throw new Error()
+    return result.token
   } catch {
     throw new ApiError('No se pudo tokenizar la tarjeta en Wompi Sandbox. Comprueba la conexión y vuelve a intentarlo.')
   }

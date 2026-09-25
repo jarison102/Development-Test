@@ -4,6 +4,8 @@ export type Terms = { privacy: string; personal: string; acceptanceToken: string
 
 export abstract class PaymentGatewayPort {
   abstract terms(): Promise<Terms>
+  abstract tokenizationKey(): Promise<string>
+  abstract tokenizeCard(payload: string): Promise<string>
   abstract create(input: {
     reference: string; amountInCents: number; email: string; cardToken: string; installments: number; terms: Terms
   }): Promise<ProviderPayment>

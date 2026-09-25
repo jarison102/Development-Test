@@ -12,9 +12,15 @@ export class PaymentsUseCases {
     private readonly config: ConfigService) {}
 
   async terms() {
-    const { privacy, personal } = await this.gateway.terms()
-    return { privacy, personal, publicKey: this.config.getOrThrow<string>('WOMPI_PUBLIC_KEY'),
+    const [{ privacy, personal }, tokenizationKey] = await Promise.all([
+      this.gateway.terms(), this.gateway.tokenizationKey(),
+    ])
+    return { privacy, personal, tokenizationKey, publicKey: this.config.getOrThrow<string>('WOMPI_PUBLIC_KEY'),
       sandboxUrl: this.config.getOrThrow<string>('WOMPI_SANDBOX_URL') }
+  }
+
+  async tokenize(payload: string) {
+    return { token: await this.gateway.tokenizeCard(payload) }
   }
 
   private async order(id: number, key: string) {

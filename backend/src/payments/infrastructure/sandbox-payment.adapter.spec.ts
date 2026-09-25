@@ -95,6 +95,38 @@ test.each([
   await expect(new SandboxPaymentAdapter(config).get('sandbox-1')).rejects.toThrow('Estado de Wompi desconocido')
 })
 
+test('entrega la llave pública de tokenización y convierte un JWE en token', async () => {
+  const fetcher = jest.spyOn(global, 'fetch')
+    .mockResolvedValueOnce(response({ publicKey: '-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----' }))
+    .mockResolvedValueOnce(response({ id: 'tok_test_xyz' }))
+  const adapter = new SandboxPaymentAdapter(config)
+  expect(await adapter.tokenizationKey()).toContain('BEGIN PUBLIC KEY')
+  expect(fetcher).toHaveBeenCalledWith('https://sandbox.wompi.co/v1/tokens/keys/tokenization',
+    expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer pub_test_placeholder' }) }))
+  expect(await adapter.tokenizeCard('a.b.c.d.e')).toBe('tok_test_xyz')
+  const [url, options] = fetcher.mock.calls[1] as [string, RequestInit]
+  expect(url).toBe('https://sandbox.wompi.co/v1/tokens/cards')
+  expect(JSON.parse(options.body as string)).toEqual({ payload: 'a.b.c.d.e' })
+  expect(JSON.stringify(options.body)).not.toMatch(/number|cvc|holder/i)
+})
+
+test.each([
+  ['llave no PEM', { publicKey: 'no-es-pem' }],
+  ['sin llave', {}],
+])('rechaza una llave de tokenización malformada: %s', async (_caso, data) => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(data))
+  await expect(new SandboxPaymentAdapter(config).tokenizationKey()).rejects.toThrow('Llave de tokenización')
+})
+
+test.each([
+  ['token de producción', { id: 'tok_prod_xyz' }],
+  ['sin token', {}],
+])('rechaza una tokenización sin token válido: %s', async (_caso, data) => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(data))
+  await expect(new SandboxPaymentAdapter(config).tokenizeCard('a.b.c.d.e'))
+    .rejects.toThrow('token de tarjeta válido')
+})
+
 test('rechaza un identificador externo con caracteres peligrosos antes de llamar', async () => {
   const fetcher = jest.spyOn(global, 'fetch')
   await expect(new SandboxPaymentAdapter(config).get('id/../admin')).rejects.toThrow('Identificador externo inválido')

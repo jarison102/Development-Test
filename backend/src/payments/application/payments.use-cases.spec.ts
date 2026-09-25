@@ -18,7 +18,9 @@ const external = { id: 'sandbox-1', reference, amountInCents: 10000, currency: '
 
 function setup() {
   const gateway = { terms: jest.fn().mockResolvedValue(terms), create: jest.fn().mockResolvedValue(external),
-    get: jest.fn().mockResolvedValue(external) } as unknown as jest.Mocked<PaymentGatewayPort>
+    get: jest.fn().mockResolvedValue(external),
+    tokenizationKey: jest.fn().mockResolvedValue('-----BEGIN PUBLIC KEY-----\npem\n-----END PUBLIC KEY-----'),
+    tokenizeCard: jest.fn().mockResolvedValue('tok_test_xyz') } as unknown as jest.Mocked<PaymentGatewayPort>
   const orders = { get: jest.fn().mockResolvedValue(order), reserve: jest.fn().mockResolvedValue(true),
     attachExternal: jest.fn().mockResolvedValue(undefined), settle: jest.fn().mockResolvedValue({ ...order, estado: 'APROBADA' }) } as unknown as jest.Mocked<PaymentOrdersPort>
   const useCase = new PaymentsUseCases(gateway, orders, {} as ConfigService)
@@ -73,8 +75,16 @@ test('terms publica solo documentos y configuración pública', async () => {
     WOMPI_SANDBOX_URL: 'https://sandbox.wompi.co/v1' })[name] } as unknown as ConfigService
   const useCase = new PaymentsUseCases(gateway, orders, config)
   expect(await useCase.terms()).toEqual({ privacy: terms.privacy, personal: terms.personal,
-    publicKey: 'pub_test_placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1' })
+    publicKey: 'pub_test_placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1',
+    tokenizationKey: expect.stringContaining('BEGIN PUBLIC KEY') })
   expect(gateway.terms).toHaveBeenCalledTimes(1)
+  expect(gateway.tokenizationKey).toHaveBeenCalledTimes(1)
+})
+
+test('tokenize reenvía el JWE al proveedor y devuelve solo el token', async () => {
+  const { useCase, gateway } = setup()
+  expect(await useCase.tokenize('a.b.c.d.e')).toEqual({ token: 'tok_test_xyz' })
+  expect(gateway.tokenizeCard).toHaveBeenCalledWith('a.b.c.d.e')
 })
 
 test.each([
