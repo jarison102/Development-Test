@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model clientes {
+  id             Int             @id @default(autoincrement())
+  nombre         String          @db.VarChar(150)
+  correo         String          @unique(map: "correo") @db.VarChar(150)
+  telefono       String          @db.VarChar(30)
+  fecha_creacion DateTime        @default(now()) @db.Timestamp(0)
+  entregas       entregas[]
+  transacciones  transacciones[]
+}
+
+model entregas {
+  id             Int             @id @default(autoincrement())
+  transaccion_id Int
+  cliente_id     Int
+  direccion      String          @db.VarChar(250)
+  ciudad         String          @db.VarChar(100)
+  departamento   String          @db.VarChar(100)
+  codigo_postal  String?         @db.VarChar(20)
+  estado         entregas_estado @default(PENDIENTE)
+  fecha_creacion DateTime        @default(now()) @db.Timestamp(0)
+  clientes       clientes        @relation(fields: [cliente_id], references: [id], onUpdate: Restrict, map: "fk_entrega_cliente")
+  transacciones  transacciones   @relation(fields: [transaccion_id], references: [id], onUpdate: Restrict, map: "fk_entrega_transaccion")
+
+  @@index([cliente_id], map: "fk_entrega_cliente")
+  @@index([transaccion_id], map: "fk_entrega_transaccion")
+}
+
+model productos {
+  id             Int             @id @default(autoincrement())
+  nombre         String          @db.VarChar(150)
+  descripcion    String          @db.Text
+  precio         Decimal         @db.Decimal(12, 2)
+  stock          Int             @default(0)
+  imagen         String?         @db.VarChar(500)
+  activo         Boolean         @default(true)
+  fecha_creacion DateTime        @default(now()) @db.Timestamp(0)
+  transacciones  transacciones[]
+  payment_attempts payment_attempts[]
+}
+
+model payment_attempts {
+  transaccion_id Int @id
+  producto_id Int
+  cantidad Int
+  estado String @db.VarChar(20)
+  direccion String @db.VarChar(250)
+  ciudad String @db.VarChar(100)
+  departamento String @db.VarChar(100)
+  codigo_postal String? @db.VarChar(20)
+  transacciones transacciones @relation(fields: [transaccion_id], references: [id], onUpdate: Restrict)
+  productos productos @relation(fields: [producto_id], references: [id], onUpdate: Restrict)
+
+  @@index([producto_id, estado])
+}
+
+model transacciones {
+  id                   Int                  @id @default(autoincrement())
+  referencia           String               @unique(map: "referencia") @db.VarChar(100)
+  producto_id          Int
+  cliente_id           Int
+  cantidad             Int
+  subtotal             Decimal              @db.Decimal(12, 2)
+  tarifa_base          Decimal              @db.Decimal(12, 2)
+  tarifa_envio         Decimal              @db.Decimal(12, 2)
+  total                Decimal              @db.Decimal(12, 2)
+  estado               transacciones_estado @default(PENDIENTE)
+  id_transaccion_wompi String?              @db.VarChar(150)
+  fecha_creacion       DateTime             @default(now()) @db.Timestamp(0)
+  fecha_actualizacion  DateTime             @default(now()) @db.Timestamp(0)
+  entregas             entregas[]
+  payment_attempts     payment_attempts?
+  clientes             clientes             @relation(fields: [cliente_id], references: [id], onUpdate: Restrict, map: "fk_transaccion_cliente")
+  productos            productos            @relation(fields: [producto_id], references: [id], onUpdate: Restrict, map: "fk_transaccion_producto")
+
+  @@index([cliente_id], map: "fk_transaccion_cliente")
+  @@index([producto_id], map: "fk_transaccion_producto")
+}
+
+enum entregas_estado {
+  PENDIENTE
+  EN_PREPARACION
+  ENVIADA
+  ENTREGADA
+}
+
+enum transacciones_estado {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
