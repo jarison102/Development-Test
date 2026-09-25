@@ -33,9 +33,15 @@ export class SandboxPaymentAdapter implements PaymentGatewayPort {
         ...options, signal: AbortSignal.timeout(10000),
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...options.headers },
       })
-      if (!response.ok) throw new BadGatewayException('Wompi Sandbox no completó la solicitud')
+      if (!response.ok) throw new BadGatewayException(path === '/tokens/cards'
+        ? `Wompi Sandbox rechazó la tokenización (HTTP ${response.status})`
+        : 'Wompi Sandbox no completó la solicitud')
       return (await response.json() as { data?: unknown }).data
-    } catch {
+    } catch (error) {
+      if (path === '/tokens/cards') {
+        if (error instanceof BadGatewayException) throw error
+        throw new BadGatewayException('No se pudo conectar con Wompi Sandbox o leer su respuesta')
+      }
       throw new BadGatewayException('No se pudo confirmar la operación con Wompi Sandbox')
     }
   }

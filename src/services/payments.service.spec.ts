@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto'
-import { tokenizeCard } from './payments.service'
+import { checkPayment, payTransaction, tokenizeCard } from './payments.service'
 
 jest.mock('./config', () => ({ apiUrl: 'http://localhost:3000/api' }))
 
@@ -64,4 +64,23 @@ test('rechaza una respuesta del backend sin token válido', async () => {
 
 test('impide tokenizar si configuración apunta fuera de Sandbox', async () => {
   await expect(tokenizeCard(card, { ...terms, sandboxUrl: 'https://production.wompi.co/v1' })).rejects.toThrow('Sandbox')
+})
+
+const apiTransaction = { id: 11, referencia: 'ref-11', productoId: 3, clienteId: 18, cantidad: 1,
+  subtotal: '150000.00', tarifaBase: '1500.00', tarifaEnvio: '5000.00', total: '156500.00',
+  estado: 'PENDIENTE', idTransaccionExterna: '15113-x' }
+
+test.each([
+  ['checkPayment', () => checkPayment(11, 'key')],
+  ['payTransaction', () => payTransaction(11, 'key', 'tok_test_x', 1,
+    { address: 'calle', city: 'bogota', department: 'bogota', postalCode: '' }, terms)],
+])('%s traduce la respuesta cruda del backend al registro de la UI', async (_name, call) => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: apiTransaction }) } as Response)
+  expect(await call()).toMatchObject({ id: 11, reference: 'ref-11', productId: 3, customerId: 18,
+    quantity: 1, status: 'PENDIENTE', externalId: '15113-x', total: '156500.00' })
+})
+
+test('checkPayment rechaza una respuesta que no sea una transacción válida', async () => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: 11 } }) } as Response)
+  await expect(checkPayment(11, 'key')).rejects.toThrow('El servidor devolvió')
 })

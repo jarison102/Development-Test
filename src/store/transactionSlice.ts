@@ -62,10 +62,10 @@ const transactionSlice = createSlice({
       })
       .addCase(refreshTransaction.pending, (state) => { state.loading = true; state.error = null })
       .addCase(refreshTransaction.fulfilled, (state, action) => {
+        state.loading = false
         if (state.id !== action.payload.id) return
         state.record = action.payload
         state.reference = action.payload.reference
-        state.loading = false
       })
       .addCase(refreshTransaction.rejected, (state, action) => {
         state.loading = false
@@ -73,9 +73,9 @@ const transactionSlice = createSlice({
       })
       .addCase(verifyPayment.pending, (state) => { state.loading = true; state.error = null })
       .addCase(verifyPayment.fulfilled, (state, action) => {
+        state.loading = false
         if (state.id !== action.payload.id) return
         state.record = action.payload
-        state.loading = false
       })
       .addCase(verifyPayment.rejected, (state, action) => {
         state.loading = false

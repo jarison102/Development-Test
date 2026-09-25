@@ -2,6 +2,7 @@ import type { Delivery } from '../types/checkout'
 import type { TransactionRecord } from '../types/transaction'
 import { ApiError, apiRequest } from './api'
 import type { Card } from './card'
+import { toTransaction, type ApiTransaction } from './transacciones.service'
 
 export type PaymentTerms = { privacy: string; personal: string; publicKey: string; sandboxUrl: string
   tokenizationKey: string }
@@ -47,14 +48,15 @@ export async function tokenizeCard(card: Card, terms: PaymentTerms): Promise<str
   }
 }
 
-export function payTransaction(id: number, key: string, token: string, installments: number,
+export async function payTransaction(id: number, key: string, token: string, installments: number,
   delivery: Delivery, terms: PaymentTerms): Promise<TransactionRecord> {
-  return apiRequest(`/payments/${id}`, { method: 'POST', headers: { 'Idempotency-Key': key },
+  return toTransaction(await apiRequest<ApiTransaction>(`/payments/${id}`, {
+    method: 'POST', headers: { 'Idempotency-Key': key },
     body: JSON.stringify({ cardToken: token, installments, acceptPrivacy: true, acceptPersonal: true,
       privacyDocument: terms.privacy, personalDocument: terms.personal,
-      address: delivery.address, city: delivery.city, department: delivery.department, postalCode: delivery.postalCode }) })
+      address: delivery.address, city: delivery.city, department: delivery.department, postalCode: delivery.postalCode }) }))
 }
 
-export function checkPayment(id: number, key: string): Promise<TransactionRecord> {
-  return apiRequest(`/payments/${id}`, { headers: { 'Idempotency-Key': key } })
+export async function checkPayment(id: number, key: string): Promise<TransactionRecord> {
+  return toTransaction(await apiRequest<ApiTransaction>(`/payments/${id}`, { headers: { 'Idempotency-Key': key } }))
 }

@@ -95,6 +95,14 @@ test.each([
   await expect(new SandboxPaymentAdapter(config).get('sandbox-1')).rejects.toThrow('Estado de Wompi desconocido')
 })
 
+test('distingue rechazo HTTP del proveedor y fallo de transporte al tokenizar sin mostrar el payload', async () => {
+  const adapter = new SandboxPaymentAdapter(config)
+  const fetcher = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: false, status: 502 } as Response)
+  await expect(adapter.tokenizeCard('a.b.c.d.e')).rejects.toThrow('tokenización (HTTP 502)')
+  fetcher.mockRejectedValue(new Error('request with sensitive data'))
+  await expect(adapter.tokenizeCard('a.b.c.d.e')).rejects.toThrow('No se pudo conectar con Wompi Sandbox')
+})
+
 test('entrega la llave pública de tokenización y convierte un JWE en token', async () => {
   const fetcher = jest.spyOn(global, 'fetch')
     .mockResolvedValueOnce(response({ publicKey: '-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----' }))

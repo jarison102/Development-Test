@@ -11,7 +11,7 @@ type ApiQuote = {
   total: string
 }
 
-type ApiTransaction = ApiQuote & {
+export type ApiTransaction = ApiQuote & {
   id: number
   referencia: string
   clienteId: number
@@ -31,7 +31,7 @@ function toQuote(data: ApiQuote): PurchaseSummary {
   }
 }
 
-function toTransaction(data: ApiTransaction): TransactionRecord {
+export function toTransaction(data: ApiTransaction): TransactionRecord {
   const amounts = toQuote(data)
   if (!Number.isSafeInteger(data.id) || !Number.isSafeInteger(data.clienteId)
     || typeof data.referencia !== 'string'
