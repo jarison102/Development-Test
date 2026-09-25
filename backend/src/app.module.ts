@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ClientesModule } from './clientes/clientes.module'
 import { EntregasModule } from './entregas/entregas.module'
+import { PaymentsModule } from './payments/payments.module'
 import { ProductosModule } from './productos/productos.module'
 import { TransaccionesModule } from './transacciones/transacciones.module'
 
@@ -21,6 +22,7 @@ import { TransaccionesModule } from './transacciones/transacciones.module'
     ClientesModule,
     TransaccionesModule,
     EntregasModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
