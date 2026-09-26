@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common'
-import { Prisma, transacciones } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../database/prisma.service'
 import { NuevaTransaccion, Transaccion } from '../domain/transaccion'
 import { TransaccionesPort } from '../domain/transacciones.port'
 
-function mapTransaccion(row: transacciones): Transaccion {
+type TransactionRow = Prisma.transaccionesGetPayload<{ include: { transaccion_items: true } }>
+
+function mapTransaccion(row: TransactionRow): Transaccion {
   return {
     id: row.id,
     referencia: row.referencia,
     productoId: row.producto_id,
+    ...(row.transaccion_items?.length ? { items: row.transaccion_items.map((item) => ({
+      productoId: item.producto_id, cantidad: item.cantidad,
+      precioUnitario: item.precio_unitario.toFixed(2), subtotal: item.subtotal.toFixed(2),
+    })) } : {}),
     clienteId: row.cliente_id,
     cantidad: row.cantidad,
     subtotal: row.subtotal.toFixed(2),
@@ -25,12 +31,12 @@ export class PrismaTransaccionesRepository implements TransaccionesPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async buscar(id: number): Promise<Transaccion | null> {
-    const row = await this.prisma.transacciones.findUnique({ where: { id } })
+    const row = await this.prisma.transacciones.findUnique({ where: { id }, include: { transaccion_items: { orderBy: { producto_id: 'asc' } } } })
     return row ? mapTransaccion(row) : null
   }
 
   async buscarPorReferencia(referencia: string): Promise<Transaccion | null> {
-    const row = await this.prisma.transacciones.findUnique({ where: { referencia } })
+    const row = await this.prisma.transacciones.findUnique({ where: { referencia }, include: { transaccion_items: { orderBy: { producto_id: 'asc' } } } })
     return row ? mapTransaccion(row) : null
   }
 
@@ -45,9 +51,12 @@ export class PrismaTransaccionesRepository implements TransaccionesPort {
       tarifa_envio: data.tarifaEnvio,
       total: data.total,
       estado: 'PENDIENTE' as const,
+      ...(data.items ? { transaccion_items: { create: data.items.map((item) => ({ producto_id: item.productoId,
+        cantidad: item.cantidad, precio_unitario: item.precioUnitario, subtotal: item.subtotal })) } } : {}),
     }
     try {
-      const row = await this.prisma.transacciones.upsert({ where: { referencia: data.referencia }, create, update: {} })
+      const row = await this.prisma.transacciones.upsert({ where: { referencia: data.referencia }, create, update: {},
+        include: { transaccion_items: { orderBy: { producto_id: 'asc' } } } })
       return mapTransaccion(row)
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

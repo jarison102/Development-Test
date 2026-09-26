@@ -15,6 +15,7 @@ export function CheckoutPage() {
   const { product, ready, loading, error } = useRouteProduct(id, 'checkout')
   const { customer, delivery, clientId, clientStatus, clientError, privacyAccepted, personalAccepted } = useAppSelector((state) => state.checkout)
   const transaction = useAppSelector((state) => state.transaction)
+  const cartItems = useAppSelector((state) => state.cart.items)
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const submitting = useRef(false)
@@ -37,7 +38,8 @@ export function CheckoutPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!product || !ready || !terms || !privacyAccepted || !personalAccepted || submitting.current) return
+    if (!product || !ready || !terms || !privacyAccepted || !personalAccepted || submitting.current
+      || cartItems.some((item) => item.stock < item.quantity)) return
     const formElement = event.currentTarget
     const form = new FormData(formElement)
     const card: Card = { number: String(form.get('number') ?? ''), holder: String(form.get('holder') ?? ''),
@@ -108,7 +110,7 @@ export function CheckoutPage() {
           {cardError && <p role="alert" className="notice">{cardError}</p>}
           {clientError && <p role="alert" className="notice">{clientError}</p>}
           <div className="page-actions">
-            <Link className="text-link" to={`/productos/${product.id}`}>← Volver al producto</Link>
+            <Link className="text-link" to={cartItems.length ? '/carrito' : `/productos/${product.id}`}>← Volver {cartItems.length ? 'al carrito' : 'al producto'}</Link>
             <button className="button" type="submit" disabled={clientStatus === 'loading' || !terms || !privacyAccepted || !personalAccepted}>
               {clientStatus === 'loading' ? 'Guardando cliente…' : 'Guardar y ver resumen'}
             </button>

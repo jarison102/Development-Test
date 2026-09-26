@@ -17,7 +17,7 @@ export class TransaccionesController {
   @Post('cotizar')
   @HttpCode(200)
   @ApiOperation({ summary: 'Calcular importes sin crear transacción; se recalculan al confirmar' })
-  @ApiResponse({ status: 200, description: '{ data: { productoId, cantidad, subtotal, tarifaBase, tarifaEnvio, total } }' })
+  @ApiResponse({ status: 200, description: '{ data: { items?, subtotal, tarifaBase, tarifaEnvio, total } }; cotiza items o productoId/cantidad' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o importes enviados por el cliente' })
   @ApiResponse({ status: 404, description: 'Producto inexistente' })
   @ApiResponse({ status: 409, description: 'Stock insuficiente' })
@@ -26,7 +26,7 @@ export class TransaccionesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Crear transacción PENDIENTE sin descontar stock' })
+  @ApiOperation({ summary: 'Crear transacción PENDIENTE con uno o varios artículos, sin descontar stock' })
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID v4 para reintentos seguros' })
   @ApiResponse({ status: 201, description: '{ data: Transaccion }; importes decimales calculados por el servidor' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o importes enviados por el cliente' })

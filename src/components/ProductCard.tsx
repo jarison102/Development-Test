@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Product } from '../types/product'
 import { formatCurrency } from '../utils/formatCurrency'
 
-export function ProductCard({ product }: { product: Product }) {
+export function ProductCard({ product, onAdd, addDisabled = false }: { product: Product; onAdd?: (product: Product) => void; addDisabled?: boolean }) {
   return (
     <article className="panel product-card">
       <div className="product-visual" aria-hidden="true">
@@ -13,9 +13,10 @@ export function ProductCard({ product }: { product: Product }) {
         <p>{product.description}</p>
         <div className="product-meta">
           <strong>{formatCurrency(product.price)}</strong>
-          <span>{product.stock} disponibles</span>
+          <span>{product.stock > 0 ? `${product.stock} disponibles` : 'Agotado'}</span>
         </div>
-        <Link className="button button-secondary" to={`/productos/${product.id}`}>Ver producto</Link>
+        <div className="cart-controls"><Link className="button button-secondary" to={`/productos/${product.id}`}>Ver producto</Link>
+          {onAdd && <button className="button" type="button" disabled={product.stock < 1 || addDisabled} onClick={() => onAdd(product)}>Agregar al carrito</button>}</div>
       </div>
     </article>
   )

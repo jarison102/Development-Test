@@ -87,6 +87,46 @@ describe('CrearTransaccion', () => {
     expect(crear).not.toHaveBeenCalled()
   })
 
+  it('cotiza y crea múltiples artículos con precio histórico del backend y una sola tarifa', async () => {
+    const { useCase, cotizar, buscarProducto, crear } = setup()
+    buscarProducto.mockImplementation(async (id) => id === 1 ? producto : { ...producto, id: 2, precio: '100.25', stock: 5 })
+    const items = [{ productoId: 2, cantidad: 1 }, { productoId: 1, cantidad: 2 }]
+    const quote = await cotizar.execute({ items })
+    expect(quote).toMatchObject({ subtotal: '500100.25', tarifaBase: '1500.00', tarifaEnvio: '5000.00',
+      total: '506600.25', items: [
+        { productoId: 1, precioUnitario: '250000.00', cantidad: 2, subtotal: '500000.00' },
+        { productoId: 2, precioUnitario: '100.25', cantidad: 1, subtotal: '100.25' },
+      ] })
+    const result = await useCase.execute({ clienteId: 2, items })
+    expect(result.estado).toBe('PENDIENTE')
+    expect(crear).toHaveBeenCalledWith(expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ productoId: 2, precioUnitario: '100.25' })]), total: '506600.25' }))
+  })
+
+  it('reintenta carritos equivalentes sin duplicar y rechaza carrito diferente', async () => {
+    const { useCase, buscarProducto, crear } = setup()
+    buscarProducto.mockImplementation(async (id) => ({ ...producto, id }))
+    const key = 'ef3b98af-a0c7-410b-bf32-3f126709aed1'
+    const items = [{ productoId: 2, cantidad: 1 }, { productoId: 1, cantidad: 2 }]
+    const first = await useCase.execute({ clienteId: 2, items }, key)
+    const port: TransaccionesPort = { buscar: jest.fn(), buscarPorReferencia: jest.fn().mockResolvedValue(first), crear }
+    const retry = new CrearTransaccion({ listar: jest.fn(), buscar: buscarProducto },
+      { buscar: jest.fn(), crear: jest.fn() }, port)
+    expect((await retry.execute({ clienteId: 2, items: [...items].reverse() }, key)).id).toBe(first.id)
+    await expect(retry.execute({ clienteId: 2, items: [{ productoId: 1, cantidad: 1 }] }, key)).rejects.toMatchObject({ status: 409 })
+    expect(crear).toHaveBeenCalledTimes(1)
+  })
+
+  it('rechaza artículos duplicados, inexistentes, inválidos, inactivos y stock insuficiente', async () => {
+    const { cotizar, buscarProducto } = setup()
+    await expect(cotizar.execute({ items: [{ productoId: 1, cantidad: 1 }, { productoId: 1, cantidad: 1 }] })).rejects.toMatchObject({ status: 400 })
+    await expect(cotizar.execute({ items: [{ productoId: 1, cantidad: 0 }] })).rejects.toMatchObject({ status: 400 })
+    await expect(cotizar.execute({ items: [{ productoId: 1, cantidad: 4 }] })).rejects.toMatchObject({ status: 409 })
+    buscarProducto.mockResolvedValueOnce(null)
+    await expect(cotizar.execute({ items: [{ productoId: 2, cantidad: 1 }] })).rejects.toMatchObject({ status: 404 })
+    buscarProducto.mockResolvedValueOnce({ ...producto, activo: false })
+    await expect(cotizar.execute({ items: [{ productoId: 1, cantidad: 1 }] })).rejects.toMatchObject({ status: 404 })
+  })
+
   it('rechaza stock insuficiente sin crear transacción', async () => {
     const { useCase, crear } = setup()
     await expect(useCase.execute({ ...input, cantidad: 4 })).rejects.toMatchObject({ status: 409 })

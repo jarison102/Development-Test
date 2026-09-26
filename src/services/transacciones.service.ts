@@ -1,3 +1,4 @@
+import type { CartItem } from '../store/cartSlice'
 import type { PurchaseSummary } from '../types/checkout'
 import type { TransactionRecord, TransactionStatus } from '../types/transaction'
 import { ApiError, apiRequest } from './api'
@@ -5,6 +6,7 @@ import { ApiError, apiRequest } from './api'
 type ApiQuote = {
   productoId: number
   cantidad: number
+  items?: { productoId: number; cantidad: number; precioUnitario: string; subtotal: string }[]
   subtotal: string
   tarifaBase: string
   tarifaEnvio: string
@@ -25,7 +27,14 @@ function toQuote(data: ApiQuote): PurchaseSummary {
       .every((amount) => typeof amount === 'string' && /^\d+\.\d{2}$/.test(amount))) {
     throw new ApiError('El servidor devolvió importes inválidos.')
   }
+  if (data.items !== undefined && (!Array.isArray(data.items) || data.items.length === 0 || !data.items.every((item) =>
+    Number.isSafeInteger(item.productoId) && item.productoId > 0 && Number.isSafeInteger(item.cantidad)
+    && item.cantidad > 0 && [item.precioUnitario, item.subtotal].every((amount) => typeof amount === 'string' && /^\d+\.\d{2}$/.test(amount))))) {
+    throw new ApiError('El servidor devolvió artículos inválidos.')
+  }
   return {
+    ...(data.items ? { items: data.items.map((item) => ({ productId: item.productoId, quantity: item.cantidad,
+      unitPrice: item.precioUnitario, subtotal: item.subtotal })) } : {}),
     productId: data.productoId, quantity: data.cantidad, subtotal: data.subtotal,
     baseFee: data.tarifaBase, shippingFee: data.tarifaEnvio, total: data.total,
   }
@@ -54,6 +63,19 @@ export async function createTransaction(productId: number, customerId: number, q
   return toTransaction(await apiRequest<ApiTransaction>('/transacciones', {
     method: 'POST', headers: { 'Idempotency-Key': key },
     body: JSON.stringify({ productoId: productId, clienteId: customerId, cantidad: quantity }),
+  }))
+}
+
+export async function quoteCart(items: Pick<CartItem, 'productId' | 'quantity'>[]): Promise<PurchaseSummary> {
+  return toQuote(await apiRequest<ApiQuote>('/transacciones/cotizar', {
+    method: 'POST', body: JSON.stringify({ items: items.map((item) => ({ productoId: item.productId, cantidad: item.quantity })) }),
+  }))
+}
+
+export async function createCartTransaction(items: Pick<CartItem, 'productId' | 'quantity'>[], customerId: number, key: string): Promise<TransactionRecord> {
+  return toTransaction(await apiRequest<ApiTransaction>('/transacciones', {
+    method: 'POST', headers: { 'Idempotency-Key': key },
+    body: JSON.stringify({ items: items.map((item) => ({ productoId: item.productId, cantidad: item.quantity })), clienteId: customerId }),
   }))
 }
 

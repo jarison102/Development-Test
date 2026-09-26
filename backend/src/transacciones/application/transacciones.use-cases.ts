@@ -4,16 +4,29 @@ import { ClientesPort } from '../../clientes/domain/clientes.port'
 import { ProductosPort } from '../../productos/domain/productos.port'
 import { CotizarTransaccionDto } from '../dto/cotizar-transaccion.dto'
 import { CrearTransaccionDto } from '../dto/crear-transaccion.dto'
-import { calcularImportes } from '../domain/calcular-importes'
+import { calcularImportes, calcularImportesItems } from '../domain/calcular-importes'
 import { Transaccion } from '../domain/transaccion'
 import { TransaccionesPort } from '../domain/transacciones.port'
 
 async function cotizar(productos: ProductosPort, data: CotizarTransaccionDto) {
-  const producto = await productos.buscar(data.productoId)
-  if (!producto) throw new NotFoundException('Producto no encontrado')
-  if (producto.stock < data.cantidad) throw new ConflictException('Stock insuficiente')
+  if (data.items && (data.productoId !== undefined || data.cantidad !== undefined)) throw new BadRequestException('Indica items o producto y cantidad')
+  const requested = data.items ?? [{ productoId: data.productoId, cantidad: data.cantidad }]
+  if (requested.length < 1 || requested.length > 50 || requested.some((item) =>
+    !Number.isSafeInteger(item.productoId) || !Number.isSafeInteger(item.cantidad) || item.productoId! < 1 || item.cantidad! < 1)
+    || new Set(requested.map((item) => item.productoId)).size !== requested.length) throw new BadRequestException('Artículos inválidos o duplicados')
+  const items = await Promise.all(requested.map(async (item) => {
+    const producto = await productos.buscar(item.productoId!)
+    if (!producto || !producto.activo) throw new NotFoundException('Producto no encontrado')
+    if (producto.stock < item.cantidad!) throw new ConflictException('Stock insuficiente')
+    return { productoId: producto.id, cantidad: item.cantidad!, precioUnitario: producto.precio }
+  }))
   try {
-    return { productoId: producto.id, cantidad: data.cantidad, ...calcularImportes(producto.precio, data.cantidad) }
+    if (!data.items) return { productoId: items[0].productoId, cantidad: items[0].cantidad,
+      ...calcularImportes(items[0].precioUnitario, items[0].cantidad) }
+    const ordered = items.sort((a, b) => a.productoId - b.productoId)
+    const { subtotals, ...amounts } = calcularImportesItems(ordered.map((item) => ({ precio: item.precioUnitario, cantidad: item.cantidad })))
+    return { productoId: ordered[0].productoId, cantidad: ordered[0].cantidad,
+      items: ordered.map((item, index) => ({ ...item, subtotal: subtotals[index] })), ...amounts }
   } catch {
     throw new ConflictException('No se puede calcular el importe de esta compra')
   }
@@ -23,9 +36,7 @@ async function cotizar(productos: ProductosPort, data: CotizarTransaccionDto) {
 export class CotizarTransaccion {
   constructor(private readonly productos: ProductosPort) {}
 
-  execute(data: CotizarTransaccionDto) {
-    return cotizar(this.productos, data)
-  }
+  execute(data: CotizarTransaccionDto) { return cotizar(this.productos, data) }
 }
 
 @Injectable()
@@ -52,8 +63,12 @@ export class CrearTransaccion {
   }
 
   private comprobarReintento(transaction: Transaccion, data: CrearTransaccionDto) {
-    if (transaction.productoId !== data.productoId || transaction.clienteId !== data.clienteId
-      || transaction.cantidad !== data.cantidad) {
+    const expected = data.items?.map((item) => ({ productoId: item.productoId, cantidad: item.cantidad }))
+      .sort((a, b) => a.productoId - b.productoId)
+    const actual = transaction.items?.map((item) => ({ productoId: item.productoId, cantidad: item.cantidad }))
+    if (transaction.clienteId !== data.clienteId || (expected
+      ? JSON.stringify(expected) !== JSON.stringify(actual)
+      : !!transaction.items || transaction.productoId !== data.productoId || transaction.cantidad !== data.cantidad)) {
       throw new ConflictException('La clave de idempotencia pertenece a otra compra')
     }
     return transaction

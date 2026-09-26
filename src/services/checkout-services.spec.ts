@@ -2,7 +2,7 @@ import { ApiError } from './api'
 import { createCustomer } from './clientes.service'
 import { checkPayment, getPaymentTerms, payTransaction } from './payments.service'
 import { getProduct } from './productos.service'
-import { createTransaction, getTransaction, quoteTransaction } from './transacciones.service'
+import { createCartTransaction, createTransaction, getTransaction, quoteCart, quoteTransaction } from './transacciones.service'
 
 jest.mock('./config', () => ({ apiUrl: 'http://localhost:3000/api' }))
 
@@ -44,6 +44,24 @@ describe('transacciones.service', () => {
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('http://localhost:3000/api/transacciones/cotizar')
     expect(JSON.parse(options.body as string)).toEqual({ productoId: 1, cantidad: 2 })
+  })
+
+  it('cotiza y crea compra de varios productos transmitiendo solo IDs y cantidades', async () => {
+    const items = [{ productId: 1, quantity: 2 }, { productId: 2, quantity: 1 }]
+    const apiItems = [{ productoId: 1, cantidad: 2, precioUnitario: '250000.00', subtotal: '500000.00' },
+      { productoId: 2, cantidad: 1, precioUnitario: '100.00', subtotal: '100.00' }]
+    mockFetch.mockResolvedValueOnce(ok({ ...apiTransaction, cantidad: 2, subtotal: '500100.00',
+      total: '506600.00', items: apiItems }))
+      .mockResolvedValueOnce(ok({ ...apiTransaction, subtotal: '500100.00', total: '506600.00', items: apiItems }))
+    expect((await quoteCart(items)).items).toHaveLength(2)
+    const transaction = await createCartTransaction(items, 7, 'key-uuid')
+    expect(transaction.items?.[1]).toEqual({ productId: 2, quantity: 1, unitPrice: '100.00', subtotal: '100.00' })
+    expect(JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)).toEqual({ items: [
+      { productoId: 1, cantidad: 2 }, { productoId: 2, cantidad: 1 },
+    ] })
+    expect(JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string)).toEqual({
+      clienteId: 7, items: [{ productoId: 1, cantidad: 2 }, { productoId: 2, cantidad: 1 }],
+    })
   })
 
   it.each([

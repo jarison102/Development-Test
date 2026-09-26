@@ -14,6 +14,7 @@ export type Delivery = {
 }
 
 export type PurchaseSummary = {
+  items?: { productId: number; quantity: number; unitPrice: string; subtotal: string }[]
   productId: number
   quantity: number
   subtotal: string

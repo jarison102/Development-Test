@@ -6,7 +6,7 @@ import { createAppStore } from '../store/store'
 import { acceptPersonal, acceptPrivacy, setAcceptanceDocuments } from '../store/checkoutSlice'
 import { getProduct, getProducts } from '../services/productos.service'
 import { createCustomer } from '../services/clientes.service'
-import { createTransaction, getTransaction, quoteTransaction } from '../services/transacciones.service'
+import { createCartTransaction, createTransaction, getTransaction, quoteCart, quoteTransaction } from '../services/transacciones.service'
 import { checkPayment, getPaymentTerms, payTransaction, tokenizeCard } from '../services/payments.service'
 import { getCard, saveCard } from '../services/card'
 
@@ -41,6 +41,11 @@ beforeEach(() => {
     shippingFee: '5000.00', total: '506500.00',
   })
   jest.mocked(createTransaction).mockReset().mockResolvedValue(record)
+  jest.mocked(createCartTransaction).mockReset().mockResolvedValue(record)
+  jest.mocked(quoteCart).mockReset().mockResolvedValue({ productId: 1, quantity: 2,
+    items: [{ productId: 1, quantity: 2, unitPrice: '250000.00', subtotal: '500000.00' },
+      { productId: 2, quantity: 1, unitPrice: '320000.00', subtotal: '320000.00' }],
+    subtotal: '820000.00', baseFee: '1500.00', shippingFee: '5000.00', total: '826500.00' })
   jest.mocked(getTransaction).mockReset().mockResolvedValue(record)
   jest.mocked(getPaymentTerms).mockReset().mockResolvedValue({ privacy: 'https://example.test/privacy',
     personal: 'https://example.test/personal', publicKey: 'public-test-placeholder', sandboxUrl: 'https://sandbox.wompi.co/v1',
@@ -102,6 +107,107 @@ test('recorre catálogo real, registra cliente, cotiza y crea una sola transacci
   open('/resultado/1')
   expect(await screen.findByText('Referencia: ref-test')).toBeInTheDocument()
   expect(getTransaction).toHaveBeenCalledWith(18)
+})
+
+test('el icono del carrito muestra unidades agregadas, cambios de cantidad y recupera el número tras refresh', async () => {
+  const view = open('/productos')
+  expect(await screen.findByText('Tercer producto')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Carrito: 0 unidades' })).toHaveTextContent('0')
+  fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[1])
+  const cart = screen.getByRole('link', { name: 'Carrito: 3 unidades' })
+  expect(cart).toHaveAttribute('href', '/carrito')
+  fireEvent.click(cart)
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar Audífonos Pro' }))
+  expect(screen.getByRole('link', { name: 'Carrito: 4 unidades' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Disminuir Audífonos Pro' }))
+  expect(screen.getByRole('link', { name: 'Carrito: 3 unidades' })).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Eliminar' })[0])
+  expect(screen.getByRole('link', { name: 'Carrito: 1 unidad' })).toBeInTheDocument()
+  view.unmount()
+  open('/productos')
+  expect(screen.getByRole('link', { name: 'Carrito: 1 unidad' })).toHaveTextContent('1')
+})
+
+test('el indicador no aumenta al superar el stock disponible', async () => {
+  jest.mocked(getProducts).mockResolvedValueOnce([{ ...products[0], stock: 2 }, ...products.slice(1)])
+  open('/productos')
+  const add = (await screen.findAllByRole('button', { name: 'Agregar al carrito' }))[0]
+  fireEvent.click(add)
+  fireEvent.click(add)
+  expect(add).toBeDisabled()
+  fireEvent.click(add)
+  expect(screen.getByRole('link', { name: 'Carrito: 2 unidades' })).toBeInTheDocument()
+})
+
+test('carrito informa error de catálogo y permite reintentar', async () => {
+  jest.mocked(getProducts).mockRejectedValueOnce(new Error('offline'))
+  open('/carrito')
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+  expect(await screen.findByText('Tu carrito está vacío.')).toBeInTheDocument()
+})
+
+test('carrito vacío, agregar dos productos, modificar cantidades, persistir y entrar al checkout', async () => {
+  const view = open('/carrito')
+  expect(await screen.findByText('Tu carrito está vacío.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: 'Ver productos' }))
+  expect(await screen.findByText('Tercer producto')).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[1])
+  fireEvent.click(screen.getByRole('link', { name: 'Carrito: 2 unidades' }))
+  expect(await screen.findByRole('heading', { name: 'Carrito' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar Audífonos Pro' }))
+  expect(screen.getByText('Cantidad: 2')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Disminuir Audífonos Pro' }))
+  expect(screen.getAllByText('Cantidad: 1')).toHaveLength(2)
+  expect(createAppStore().getState().cart.items).toHaveLength(2)
+  fireEvent.click(screen.getAllByRole('button', { name: 'Eliminar' })[0])
+  expect(screen.getByRole('link', { name: 'Ir al checkout' })).toHaveAttribute('href', '/checkout/2')
+  fireEvent.click(screen.getByRole('link', { name: 'Ir al checkout' }))
+  expect(await screen.findByRole('heading', { name: 'Tarjeta y entrega' })).toBeInTheDocument()
+  view.unmount()
+  expect(createAppStore().getState().cart.items[0].productId).toBe(2)
+})
+
+test('resumen de carrito usa cotización del backend y crea una orden con todos los productos', async () => {
+  const items = products.slice(0, 2).map((product, index) => ({ productId: product.id, name: product.name,
+    price: product.price, image: product.image, stock: product.stock, quantity: index === 0 ? 2 : 1 }))
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+    cart: { items }, checkout: { clientId: 7, quantity: 1, step: 'resumen', customer: { name: 'Ana', email: 'ana@example.test', phone: '300' },
+      delivery: { address: 'Calle 1', city: 'Bogotá', department: 'Cundinamarca', postalCode: '' } }, transaction: {} }))
+  jest.mocked(createCartTransaction).mockResolvedValue({ ...record, items: [
+    { productId: 1, quantity: 2, unitPrice: '250000.00', subtotal: '500000.00' },
+    { productId: 2, quantity: 1, unitPrice: '320000.00', subtotal: '320000.00' }], subtotal: '820000.00', total: '826500.00' })
+  saveCard({ number: '4242 4242 4242 4242', holder: 'Ana', month: '12', year: '35', cvc: '123', installments: 1 })
+  open('/resumen/1')
+  expect(await screen.findByText(/Teclado · 1 unidad ·/)).toBeInTheDocument()
+  expect(quoteCart).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ productId: 2, quantity: 1 })]))
+  fireEvent.click(screen.getByRole('checkbox', { name: /política de privacidad/i }))
+  fireEvent.click(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i }))
+  fireEvent.click(screen.getByRole('button', { name: 'Pagar en Sandbox' }))
+  expect(await screen.findByRole('heading', { name: 'Transacción creada - pendiente de pago' })).toBeInTheDocument()
+  expect(createCartTransaction).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ productId: 2, quantity: 1 })]), 7, expect.any(String))
+  expect(createTransaction).not.toHaveBeenCalled()
+  expect(localStorage.getItem('payment-checkout-progress-v1')).not.toMatch(/4242|cvc|tok_test_mock/i)
+})
+
+test('si el backend cambia el total al crear la orden exige confirmación nueva antes de tokenizar', async () => {
+  const item = { productId: 1, name: products[0].name, price: products[0].price, image: null, stock: 10, quantity: 2 }
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+    cart: { items: [item] }, checkout: { clientId: 7, step: 'resumen',
+      delivery: { address: 'Calle 1', city: 'Bogotá', department: 'Cundinamarca' } }, transaction: {} }))
+  jest.mocked(createCartTransaction).mockResolvedValue({ ...record, total: '826501.00' })
+  saveCard({ number: '4242 4242 4242 4242', holder: 'Ana', month: '12', year: '35', cvc: '123', installments: 1 })
+  open('/resumen/1')
+  await screen.findByRole('heading', { name: 'Detalle de la compra' })
+  fireEvent.click(screen.getByRole('checkbox', { name: /política de privacidad/i }))
+  fireEvent.click(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i }))
+  fireEvent.click(screen.getByRole('button', { name: 'Pagar en Sandbox' }))
+  expect(await screen.findByText(/El importe cambió al crear la orden/)).toBeInTheDocument()
+  expect(tokenizeCard).not.toHaveBeenCalled()
+  expect(payTransaction).not.toHaveBeenCalled()
 })
 
 test('volver al catálogo borra cualquier tarjeta abandonada en memoria', async () => {

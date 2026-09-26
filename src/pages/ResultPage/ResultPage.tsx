@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CheckoutSteps } from '../../components/CheckoutSteps'
+import { OrderSummary } from '../../components/OrderSummary'
 import { ProductUnavailable } from '../../components/ProductUnavailable'
 import { clearCard } from '../../services/card'
+import { clearCart } from '../../store/cartSlice'
 import { resetCheckout } from '../../store/checkoutSlice'
 import { useAppDispatch, useAppSelector } from '../../store/hooks'
 import { fetchProduct } from '../../store/productSlice'
@@ -20,6 +22,7 @@ export function ResultPage() {
   const { id } = useParams()
   const { product, ready, loading, error } = useRouteProduct(id, 'resultado')
   const transaction = useAppSelector((state) => state.transaction)
+  const cart = useAppSelector((state) => state.cart.items)
   const key = useAppSelector((state) => state.checkout.idempotencyKey)
   const dispatch = useAppDispatch()
   const [verifiedId, setVerifiedId] = useState<number | null>(null)
@@ -54,6 +57,9 @@ export function ResultPage() {
               <h1>{headings[record.status]}</h1>
               <p>Referencia: {record.reference}</p>
               <p>Total calculado por el backend: {formatCurrency(record.total)}</p>
+              {record.items && <OrderSummary product={product} summary={record} names={cart.map((item) => ({
+                id: item.productId, name: item.name, description: '', price: item.price, stock: item.stock, image: item.image,
+              }))} />}
               {record.status === 'PENDIENTE' && <p>El pago puede seguir en proceso. Consultaremos su estado; no se descontará stock ni se creará entrega hasta que se apruebe.</p>}
             </>
           ) : <h1>Sin resultado de pago</h1>}
@@ -70,6 +76,7 @@ export function ResultPage() {
           <Link className="button" to={`/productos/${product.id}`} onClick={() => {
             clearCard()
             if (record && record.status !== 'PENDIENTE' && verifiedId === record.id) {
+              if (record.status === 'APROBADA') dispatch(clearCart())
               dispatch(clearTransaction())
               dispatch(resetCheckout())
             }

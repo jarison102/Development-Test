@@ -22,6 +22,11 @@ p { color: #526172; line-height: 1.55; }
 .header-content { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .brand { font-size: 1.25rem; font-weight: 800; color: #174678; text-decoration: none; }
 .header-label { font-size: 0.85rem; color: #526172; }
+.cart-link { display: inline-flex; align-items: center; gap: 0.55rem; min-height: 44px; padding: 0.45rem 0.65rem; border: 1px solid #d5e3f0; border-radius: 999px; background: #edf4fb; color: #174678; font-size: 0.9rem; font-weight: 700; text-decoration: none; }
+.cart-link:hover { background: #dcebf8; }
+.cart-link:focus-visible { outline: 3px solid #db8e27; outline-offset: 3px; }
+.cart-link svg { width: 21px; height: 21px; flex: none; }
+.cart-count { display: grid; place-items: center; min-width: 1.5rem; height: 1.5rem; padding-inline: 0.3rem; border-radius: 999px; background: #174678; color: #fff; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .main-content { padding-block: 1.25rem 3rem; }
 .page-section { margin-top: 1.5rem; }
 .narrow-section { max-width: 700px; margin-inline: auto; }
@@ -60,6 +65,12 @@ p { color: #526172; line-height: 1.55; }
 .product-detail-content .price { margin-bottom: 0.6rem; }
 .quantity-field { margin-bottom: 0.35rem; font-weight: 600; }
 #quantity { width: 90px; min-height: 44px; margin-bottom: 1.25rem; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px; }
+.cart-list { display: grid; gap: 1rem; }
+.cart-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.cart-item .product-visual { min-height: 130px; }
+.cart-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.cart-controls button:not(.button) { min-width: 44px; min-height: 44px; border: 1px solid #a5b5c4; border-radius: 8px; background: #fff; }
+.cart-total { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 .delivery-summary { margin-top: 1rem; }
 .delivery-summary p:last-child { margin-bottom: 0; }
 
@@ -84,6 +95,7 @@ p { color: #526172; line-height: 1.55; }
   .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-detail, .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page-actions { flex-direction: row; align-items: center; justify-content: space-between; }
+  .cart-item { grid-template-columns: 180px minmax(0, 1fr); }
 }
 
 @media (min-width: 1000px) {

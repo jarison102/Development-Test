@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { errorMessage } from '../services/api'
 import { checkPayment } from '../services/payments.service'
-import { createTransaction, getTransaction } from '../services/transacciones.service'
+import { createCartTransaction, createTransaction, getTransaction } from '../services/transacciones.service'
 import type { TransactionRecord, TransactionState } from '../types/transaction'
 import { setIdempotencyKey } from './checkoutSlice'
 import type { RootState } from './store'
@@ -12,13 +12,16 @@ export const initialTransactionState: TransactionState = {
 
 export const submitTransaction = createAsyncThunk<TransactionRecord, void, { state: RootState; rejectValue: string }>(
   'transaction/create', async (_, { dispatch, getState, rejectWithValue }) => {
-    const { product, checkout } = getState()
-    if (!product.selectedId || !checkout.clientId || !checkout.quote) {
+    const { product, checkout, cart } = getState()
+    if (!product.selectedId || !checkout.clientId || !checkout.quote || cart.items.length > 0 &&
+      (!checkout.quote.items || cart.items.some((item) => !checkout.quote!.items!.some((quoted) =>
+        quoted.productId === item.productId && quoted.quantity === item.quantity)))) {
       return rejectWithValue('Completa el cliente y el resumen antes de confirmar.')
     }
     const key = checkout.idempotencyKey ?? crypto.randomUUID()
     if (!checkout.idempotencyKey) dispatch(setIdempotencyKey(key))
-    try { return await createTransaction(product.selectedId, checkout.clientId, checkout.quantity, key) }
+    try { return cart.items.length ? await createCartTransaction(cart.items, checkout.clientId, key)
+      : await createTransaction(product.selectedId, checkout.clientId, checkout.quantity, key) }
     catch (error) { return rejectWithValue(errorMessage(error)) }
   },
   { condition: (_, { getState }) => !getState().transaction.creating && !getState().transaction.id },

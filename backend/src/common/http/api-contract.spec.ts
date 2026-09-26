@@ -87,6 +87,19 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
     expect(createExecute).toHaveBeenCalledWith(expect.objectContaining({ productoId: 1, clienteId: 2, cantidad: 1 }), key)
   })
 
+  it('acepta un carrito sin importes y rechaza precios o stock del navegador', async () => {
+    const items = [{ productoId: 2, cantidad: 1 }, { productoId: 1, cantidad: 2 }]
+    const valid = await app.inject({ method: 'POST', url: '/api/transacciones', payload: { clienteId: 2, items } })
+    expect(valid.statusCode).toBe(201)
+    expect(createExecute).toHaveBeenCalledWith(expect.objectContaining({ items }), undefined)
+    for (const badItem of [{ ...items[0], precio: '0.01' }, { ...items[0], stock: 100 }]) {
+      const invalid = await app.inject({ method: 'POST', url: '/api/transacciones/cotizar', payload: { items: [badItem] } })
+      expect(invalid.statusCode).toBe(400)
+    }
+    const empty = await app.inject({ method: 'POST', url: '/api/transacciones/cotizar', payload: { items: [] } })
+    expect(empty.statusCode).toBe(400)
+  })
+
   it('valida correo y parámetros inválidos', async () => {
     const cliente = await app.inject({ method: 'POST', url: '/api/clientes', payload: {
       nombre: 'Cliente', correo: 'invalido', telefono: '3000000000',

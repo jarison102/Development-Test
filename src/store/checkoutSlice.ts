@@ -1,8 +1,9 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import { errorMessage } from '../services/api'
 import { createCustomer } from '../services/clientes.service'
-import { quoteTransaction } from '../services/transacciones.service'
+import { quoteCart, quoteTransaction } from '../services/transacciones.service'
 import type { CheckoutStep, Customer, Delivery, PurchaseSummary } from '../types/checkout'
+import { addProduct, clearCart, decreaseQuantity, increaseQuantity, removeProduct } from './cartSlice'
 import type { RootState } from './store'
 
 type RequestStatus = 'idle' | 'loading' | 'succeeded' | 'failed'
@@ -47,6 +48,13 @@ export const registerCustomer = createAsyncThunk<number, void, { state: RootStat
 export const fetchQuote = createAsyncThunk<PurchaseSummary, { productId: number; quantity: number }, { rejectValue: string }>(
   'checkout/fetchQuote', async ({ productId, quantity }, { rejectWithValue }) => {
     try { return await quoteTransaction(productId, quantity) }
+    catch (error) { return rejectWithValue(errorMessage(error)) }
+  },
+)
+
+export const fetchCartQuote = createAsyncThunk<PurchaseSummary, void, { state: RootState; rejectValue: string }>(
+  'checkout/fetchCartQuote', async (_, { getState, rejectWithValue }) => {
+    try { return await quoteCart(getState().cart.items) }
     catch (error) { return rejectWithValue(errorMessage(error)) }
   },
 )
@@ -118,6 +126,20 @@ const checkoutSlice = createSlice({
         if (state.quoteRequestId !== action.meta.requestId) return
         state.quoteStatus = 'failed'
         state.quoteError = action.payload ?? 'No se pudo calcular el resumen.'
+      })
+      .addCase(fetchCartQuote.pending, (state, action) => {
+        state.quote = null; state.quoteStatus = 'loading'; state.quoteError = null; state.quoteRequestId = action.meta.requestId
+      })
+      .addCase(fetchCartQuote.fulfilled, (state, action) => {
+        if (state.quoteRequestId !== action.meta.requestId) return
+        state.quote = action.payload; state.quoteStatus = 'succeeded'
+      })
+      .addCase(fetchCartQuote.rejected, (state, action) => {
+        if (state.quoteRequestId !== action.meta.requestId) return
+        state.quoteStatus = 'failed'; state.quoteError = action.payload ?? 'No se pudo calcular el resumen.'
+      })
+      .addMatcher((action) => [addProduct.type, clearCart.type, decreaseQuantity.type, increaseQuantity.type, removeProduct.type].includes(action.type), (state) => {
+        state.quote = null; state.quoteStatus = 'idle'; state.quoteRequestId = null; state.idempotencyKey = null
       })
   },
 })

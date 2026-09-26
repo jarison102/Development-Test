@@ -1,4 +1,6 @@
 import { createAppStore } from './store'
+import { addProduct, clearCart, decreaseQuantity, increaseQuantity, removeProduct } from './cartSlice'
+import { cartSubtotal, cartTotal } from './cartTotals'
 import { STORAGE_KEY, loadPersistedState, saveProgress } from './persistence'
 import { fetchProduct, fetchProducts, selectProduct } from './productSlice'
 import { selectCurrentProduct, selectPurchaseSummary } from './selectors'
@@ -206,6 +208,37 @@ describe('transactionSlice', () => {
   })
 })
 
+describe('cartSlice', () => {
+  it('agrega, suma hasta stock, reduce y elimina sin aceptar agotados', () => {
+    const appStore = createAppStore()
+    appStore.dispatch(addProduct({ ...product, stock: 2 }))
+    appStore.dispatch(addProduct({ ...product, stock: 2 }))
+    appStore.dispatch(increaseQuantity(1))
+    expect(appStore.getState().cart.items[0].quantity).toBe(2)
+    appStore.dispatch(decreaseQuantity(1))
+    appStore.dispatch(decreaseQuantity(1))
+    expect(appStore.getState().cart.items[0].quantity).toBe(1)
+    appStore.dispatch(addProduct({ ...product, id: 2, price: '100.25' }))
+    appStore.dispatch(addProduct({ ...product, id: 3, stock: 0 }))
+    expect(appStore.getState().cart.items).toHaveLength(2)
+    expect(cartSubtotal(appStore.getState().cart.items[0])).toBe('250000.00')
+    expect(cartTotal(appStore.getState().cart.items)).toBe('250100.25')
+    appStore.dispatch(removeProduct(1))
+    expect(appStore.getState().cart.items).toHaveLength(1)
+    appStore.dispatch(clearCart())
+    expect(appStore.getState().cart.items).toEqual([])
+  })
+
+  it('sincroniza precio y stock del backend después de refresh sin aumentar cantidad', () => {
+    const appStore = createAppStore()
+    appStore.dispatch(addProduct(product))
+    appStore.dispatch(fetchProducts.fulfilled([{ ...product, stock: 0, price: '900.00' }], '', undefined))
+    expect(appStore.getState().cart.items[0]).toMatchObject({ stock: 0, price: '900.00', quantity: 1 })
+    appStore.dispatch(increaseQuantity(1))
+    expect(appStore.getState().cart.items[0].quantity).toBe(1)
+  })
+})
+
 describe('persistencia', () => {
   it('ignora JSON corrupto, versiones desconocidas y contenido no objeto', () => {
     localStorage.setItem(STORAGE_KEY, '{no-json')
@@ -253,6 +286,22 @@ describe('persistencia', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, productId: null,
       checkout: {}, transaction: { id: 18, reference: 'ref-1' } }))
     expect(loadPersistedState()?.transaction.id).toBeNull()
+  })
+
+  it('persistencia whitelist recupera carrito e ignora campos sensibles inyectados', () => {
+    const appStore = createAppStore()
+    appStore.dispatch(addProduct({ ...product, stock: 3 }))
+    const raw = localStorage.getItem(STORAGE_KEY)!
+    expect(JSON.parse(raw).cart.items).toEqual([{
+      productId: 1, name: 'Audífonos', price: '250000.00', image: null, stock: 3, quantity: 1,
+    }])
+    expect(createAppStore().getState().cart.items).toEqual(appStore.getState().cart.items)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...JSON.parse(raw), cart: { items: [
+      { ...JSON.parse(raw).cart.items[0], cardNumber: '4242', cvc: '123', quantity: 999 },
+      { productId: -1, name: 'invalido', price: '0.01', stock: 1, quantity: 1 },
+    ] } }))
+    expect(loadPersistedState()?.cart.items).toEqual([{ ...appStore.getState().cart.items[0], quantity: 3 }])
+    expect(createAppStore().getState().cart.items[0]).not.toHaveProperty('cvc')
   })
 
   it('saveProgress tolera un storage que lanza y nunca guarda consentimientos', () => {

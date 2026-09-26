@@ -7,7 +7,7 @@ import { ProductUnavailable } from '../../components/ProductUnavailable'
 import { errorMessage } from '../../services/api'
 import { clearCard, getCard } from '../../services/card'
 import { getPaymentTerms, payTransaction, tokenizeCard, type PaymentTerms } from '../../services/payments.service'
-import { acceptPersonal, acceptPrivacy, fetchQuote, setAcceptanceDocuments } from '../../store/checkoutSlice'
+import { acceptPersonal, acceptPrivacy, fetchCartQuote, fetchQuote, setAcceptanceDocuments } from '../../store/checkoutSlice'
 import { useAppDispatch, useAppSelector } from '../../store/hooks'
 import { fetchProduct } from '../../store/productSlice'
 import { selectPurchaseSummary } from '../../store/selectors'
@@ -21,6 +21,8 @@ export function SummaryPage() {
   const { customer, delivery, quantity, clientId, idempotencyKey, quoteStatus, quoteError,
     privacyAccepted, personalAccepted } = useAppSelector((state) => state.checkout)
   const quote = useAppSelector(selectPurchaseSummary)
+  const cartItems = useAppSelector((state) => state.cart.items)
+  const catalog = useAppSelector((state) => state.product.items)
   const transaction = useAppSelector((state) => state.transaction)
   const dispatch = useAppDispatch()
   const appStore = useStore<RootState>()
@@ -32,8 +34,11 @@ export function SummaryPage() {
   const [termsRetry, setTermsRetry] = useState(0)
 
   useEffect(() => {
-    if (ready && product && !transaction.id) void dispatch(fetchQuote({ productId: product.id, quantity }))
-  }, [dispatch, product, quantity, ready, transaction.id])
+    if (ready && product && !transaction.id) {
+      if (cartItems.length) void dispatch(fetchCartQuote())
+      else void dispatch(fetchQuote({ productId: product.id, quantity }))
+    }
+  }, [dispatch, product, quantity, ready, transaction.id, cartItems])
 
   useEffect(() => {
     if (ready && transaction.id && !transaction.record) void dispatch(refreshTransaction(transaction.id))
@@ -70,6 +75,11 @@ export function SummaryPage() {
         : await dispatch(submitTransaction()).unwrap()
       const key = idempotencyKey ?? appStore.getState().checkout.idempotencyKey
       if (!key) throw new Error('Falta la clave de la orden')
+      if (!transaction.id && quote && (record.total !== quote.total || JSON.stringify(record.items) !== JSON.stringify(quote.items))) {
+        setPayError('El importe cambió al crear la orden. Revisa el nuevo resumen y vuelve a confirmar antes de pagar.')
+        submitting.current = false
+        return
+      }
       const token = await tokenizeCard(card, terms)
       clearCard()
       await payTransaction(record.id, key, token, card.installments, delivery, terms)
@@ -89,7 +99,8 @@ export function SummaryPage() {
   if (!ready) return <p role="status">Preparando resumen…</p>
 
   const summary = transaction.record && transaction.record.productId === product.id
-    ? { productId: product.id, quantity: transaction.record.quantity, subtotal: transaction.record.subtotal,
+    ? { productId: product.id, quantity: transaction.record.quantity, items: transaction.record.items,
+        subtotal: transaction.record.subtotal,
         baseFee: transaction.record.baseFee, shippingFee: transaction.record.shippingFee, total: transaction.record.total }
     : quote
 
@@ -102,8 +113,10 @@ export function SummaryPage() {
         <p>El backend recalcula importes y comprueba el stock al crear la orden; reserva disponibilidad justo antes del pago.</p>
         {transaction.id && !transaction.record && <p role="status">Consultando transacción existente…</p>}
         {!transaction.id && quoteStatus === 'loading' && <p role="status">Calculando importes…</p>}
-        {!transaction.id && quoteError && <div role="alert"><p>{quoteError}</p><button className="button" onClick={() => void dispatch(fetchQuote({ productId: product.id, quantity }))}>Reintentar cotización</button></div>}
-        {summary && <OrderSummary product={product} summary={summary} />}
+        {!transaction.id && quoteError && <div role="alert"><p>{quoteError}</p><button className="button" onClick={() => { if (cartItems.length) void dispatch(fetchCartQuote()); else void dispatch(fetchQuote({ productId: product.id, quantity })) }}>Reintentar cotización</button></div>}
+        {summary && <OrderSummary product={product} summary={summary} names={[...catalog, ...cartItems.map((item) => ({
+          id: item.productId, name: item.name, description: '', price: item.price, stock: item.stock, image: item.image,
+        }))]} />}
         {customer.name && delivery.address && <section className="panel delivery-summary">
           <h2>Datos de entrega</h2>
           <p>{customer.name} · {customer.email} · {customer.phone}</p>

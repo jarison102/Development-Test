@@ -19,6 +19,13 @@ describe('ProductCard', () => {
     expect(screen.getByRole('link', { name: 'Ver producto' })).toHaveAttribute('href', '/productos/1')
   })
 
+  it('desactiva el botón si el producto está agotado', () => {
+    const add = jest.fn()
+    inRouter(<ProductCard product={{ ...product, stock: 0 }} onAdd={add} />)
+    expect(screen.getByText('Agotado')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Agregar al carrito' })).toBeDisabled()
+  })
+
   it('renderiza la imagen cuando existe', () => {
     const { container } = inRouter(<ProductCard product={{ ...product, image: 'https://img.test/x.png' }} />)
     expect(container.querySelector('img')).toHaveAttribute('src', 'https://img.test/x.png')
@@ -31,12 +38,20 @@ describe('OrderSummary', () => {
 
   it('usa singular para una unidad', () => {
     inRouter(<OrderSummary product={product} summary={{ ...base, quantity: 1 }} />)
-    expect(screen.getByText('Audífonos · 1 unidad')).toBeInTheDocument()
+    expect(screen.getByText(/Audífonos · 1 unidad ·/)).toBeInTheDocument()
+  })
+
+  it('pinta artículos y precios unitarios históricos proporcionados por backend', () => {
+    inRouter(<OrderSummary product={product} names={[product]} summary={{ ...base, quantity: 3,
+      items: [{ productId: 1, quantity: 2, unitPrice: '100.00', subtotal: '200.00' },
+        { productId: 2, quantity: 1, unitPrice: '50.00', subtotal: '50.00' }] }} />)
+    expect(screen.getByText(/Audífonos · 2 unidades ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Producto 2 · 1 unidad ·/)).toBeInTheDocument()
   })
 
   it('usa plural para varias unidades', () => {
     inRouter(<OrderSummary product={product} summary={{ ...base, quantity: 3 }} />)
-    expect(screen.getByText('Audífonos · 3 unidades')).toBeInTheDocument()
+    expect(screen.getByText(/Audífonos · 3 unidades ·/)).toBeInTheDocument()
   })
 })
 

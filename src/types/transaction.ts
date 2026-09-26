@@ -4,6 +4,7 @@ export type TransactionRecord = {
   id: number
   reference: string
   productId: number
+  items?: { productId: number; quantity: number; unitPrice: string; subtotal: string }[]
   customerId: number
   quantity: number
   subtotal: string

@@ -4,6 +4,7 @@ export type Transaccion = {
   id: number
   referencia: string
   productoId: number
+  items?: { productoId: number; cantidad: number; precioUnitario: string; subtotal: string }[]
   clienteId: number
   cantidad: number
   subtotal: string
