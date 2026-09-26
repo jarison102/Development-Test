@@ -22,7 +22,7 @@ async function bootstrap() {
     .build())
   SwaggerModule.setup('api/docs', app, document)
 
-  await app.listen(config.get<number>('PORT', 3000), '127.0.0.1')
+  await app.listen(config.get<number>('PORT', 3000), '127.0.0.0')
 }
 
 void bootstrap()
