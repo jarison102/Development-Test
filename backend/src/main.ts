@@ -13,7 +13,10 @@ async function bootstrap() {
   app.setGlobalPrefix('api')
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   app.useGlobalFilters(new ApiExceptionFilter())
-  app.enableCors({ origin: config.getOrThrow<string>('FRONTEND_ORIGIN').split(','), methods: ['GET', 'POST'] })
+ app.enableCors({
+  origin: config.getOrThrow<string>('FRONTEND_ORIGIN'),
+  methods: ['GET', 'POST', 'OPTIONS'],
+})
 
   const document = SwaggerModule.createDocument(app, new DocumentBuilder()
     .setTitle('Payment Checkout API')
@@ -22,7 +25,10 @@ async function bootstrap() {
     .build())
   SwaggerModule.setup('api/docs', app, document)
 
-  await app.listen(config.get<number>('PORT', 3000), '127.0.0.0')
+await app.listen(
+  config.get<number>('PORT', 3000),
+  config.get<string>('HOST', '0.0.0.0'),
+)
 }
 
 void bootstrap()
