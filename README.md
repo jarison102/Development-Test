@@ -1,6 +1,6 @@
 # Payment Checkout — Wompi Sandbox
 
-Prueba técnica full-stack: catálogo → carrito auxiliar → tarjeta y entrega → resumen → pago → resultado → vuelta al catálogo. El proveedor de pagos se usa exclusivamente en **Sandbox/UAT**. El frontend React vive en la raíz y el backend NestJS en `backend/`. El despliegue público utiliza Vercel para la web y Railway para la API; según la información proporcionada por el responsable, la base MySQL/MariaDB del despliegue está en Railway. XAMPP se utilizó únicamente durante el desarrollo local. Las extensiones del esquema requieren revisión y aplicación manual del SQL aditivo en cada base nueva; nunca se ejecutan durante el build.
+Prueba técnica full-stack: catálogo → carrito auxiliar → tarjeta y entrega → resumen → pago → resultado → vuelta al catálogo. El proveedor de pagos se usa exclusivamente en **Sandbox/UAT**. El frontend React vive en la raíz y el backend NestJS en `backend/`. El despliegue público utiliza Vercel para la web y Railway para la API y la base MySQL. XAMPP se utilizó únicamente durante el desarrollo local. Las extensiones del esquema requieren revisión y aplicación manual del SQL aditivo en cada base nueva; nunca se ejecutan durante el build.
 
 ## Arquitectura
 
@@ -15,7 +15,7 @@ Vercel: React SPA + Vite + Redux (raíz)
 
 - Frontend: React 19 + TypeScript + Vite, Redux Toolkit, React Router, Jest + Testing Library y CSS mobile-first con Flexbox/Grid. `src/store/persistence.ts` restaura carrito y progreso en `localStorage`; la tarjeta solo vive en memoria (`src/services/card.ts`).
 - Backend: NestJS sobre Fastify, `@nestjs/config`, `@nestjs/swagger`, Prisma Client, `class-validator`, Jest y Oxlint. Las rutas viven en `backend/src/*/*.controller.ts`; las reglas están en `application/` y `domain/`; las interfaces (`domain/*.port.ts`, `payments/ports/`) desacoplan los adaptadores Prisma/Wompi registrados por los módulos NestJS. `PaymentsUseCases` depende de `PaymentGatewayPort` y `PaymentOrdersPort`, no de la implementación del proveedor.
-- MySQL/MariaDB: el esquema en `backend/prisma/schema.prisma` fue introspectado de la base existente. En el despliegue la base está en Railway (información del responsable del proyecto); XAMPP fue solo para desarrollo. La respuesta pública de `GET /api/productos` comprueba acceso a datos desde la API, pero no revela el host de la BD ni sustituye verificarlo en el panel de Railway.
+- MySQL/MariaDB: el esquema en `backend/prisma/schema.prisma` fue introspectado de la base existente. En el despliegue la base es un servicio MySQL administrado de Railway, en el mismo proyecto que el backend; XAMPP fue solo para desarrollo.
 - **ROP:** no implementado. Cotización, creación de transacción, procesamiento/conciliación de pagos y creación de entrega usan excepciones de NestJS y promesas, no `Result`/`Either` ni composición explícita de `Success`/`Failure`. Puertos y adaptadores no equivalen a ROP.
 
 ## Instalación
@@ -53,8 +53,8 @@ En desarrollo local se pueden copiar los archivos `.env.example` y configurar la
 - `npm run db:pull` — introspección de solo lectura hacia `schema.prisma`.
 - `npm run db:generate` — regenera Prisma Client.
 - Nunca `migrate reset` ni `db push`: la base existente es la fuente de verdad.
-- `backend/prisma/payment_attempts.sql` y `backend/prisma/cart_items.sql` son aditivos. En desarrollo se aplicaron una sola vez a la base **local** `payment_checkout` tras respaldo y autorización; no repetirlos allí. El segundo crea `transaccion_items` (precios históricos) y `payment_attempt_items` (reservas de artículos adicionales). Antes de aplicarlos a otra base, comparar su esquema real y obtener respaldo/autorización; esta auditoría no ejecutó SQL ni confirmó desde el panel si están aplicados en Railway.
-- El backend compilado con el nuevo Prisma Client necesita estas tablas incluso para consultar órdenes antiguas; en desarrollo, antes de crearlas, Prisma devolvía `P2021`/HTTP 500 a `GET /transacciones/:id` y después la consulta histórica volvió a responder 200. La API Railway respondió 200 a `GET /api/productos`, lo que no comprueba por sí solo todas las tablas de pagos. `db:pull` introspecta, pero no sustituye la revisión del SQL.
+- `backend/prisma/payment_attempts.sql` y `backend/prisma/cart_items.sql` son aditivos. En desarrollo se aplicaron una sola vez a la base **local** `payment_checkout` tras respaldo y autorización; no repetirlos allí. El segundo crea `transaccion_items` (precios históricos) y `payment_attempt_items` (reservas de artículos adicionales). Antes de aplicarlos a otra base, comparar su esquema real y obtener respaldo/autorización. En la base de Railway el esquema completo ya está aplicado (`GET /api/transacciones/:id` responde 200).
+- El backend compilado con el nuevo Prisma Client necesita estas tablas incluso para consultar órdenes antiguas; en desarrollo, antes de crearlas, Prisma devolvía `P2021`/HTTP 500 a `GET /transacciones/:id` y después la consulta histórica volvió a responder 200. `db:pull` introspecta, pero no sustituye la revisión del SQL.
 
 ## Seed de productos
 
@@ -128,7 +128,7 @@ ProductPage   → stock actualizado al volver
 ## Seguridad
 
 - La llave privada y el secreto de integridad deben permanecer únicamente en el entorno del **backend Railway**; nunca en Vercel, variables `VITE_*`, tests ni documentación. No se consultaron ni mostraron valores privados.
-- **Hallazgo crítico pendiente antes de entregar el repositorio público:** `backend/.env` estaba rastreado en Git y su ruta todavía es accesible en un commit histórico **público** de GitHub (comprobación de estado HTTP sin descargar ni mostrar contenido). Se quitó del índice local con `git rm --cached backend/.env` (archivo local conservado, protegido por `.gitignore`), **sin reescribir historial ni hacer push**. **Revocar/rotar las credenciales afectadas y actualizar las variables de Railway mediante un canal seguro es obligatorio antes de compartir la entrega**; desindexar no borra los commits anteriores. Evaluar limpieza del historial únicamente con autorización específica. `.env` de la raíz no está rastreado. Los `.env.example` usan placeholders.
+- `backend/.env` estuvo rastreado en Git; se eliminó del repositorio con `git rm --cached backend/.env` (commit `4440720`, ya en `main`, sin reescribir historial) y queda protegido por `.gitignore`. Como su ruta sigue siendo accesible en commits históricos públicos, las credenciales Sandbox afectadas deben rotarse en el panel del proveedor y actualizarse en las variables privadas de Railway. `.env` de la raíz no está rastreado. Los `.env.example` usan placeholders.
 - Revisión de patrones de llaves privadas, secretos de integridad y bloques de clave privada en código, tests y documentación: sin coincidencias de valores reales detectadas; esta búsqueda no sustituye la revisión del historial ni la rotación.
 - Nada de tarjeta en MySQL, Redux persistido ni `localStorage`; el payload de pago nunca contiene `number`/`cvc` (verificado en tests). Los logs del caso de uso de pagos se limitan a identificadores y estado, no a tarjeta o llaves.
 - `Idempotency-Key` v4 obligatoria en operaciones de pago; la referencia derivada impide pagar/consultar órdenes ajenas. DTOs con `class-validator` (`whitelist`, `forbidNonWhitelisted`); los importes se calculan en el backend.
@@ -161,14 +161,14 @@ npm run lint && npm run build && npm test -- --coverage
 
 ## Deployment
 
-Despliegue en funcionamiento (verificación de solo lectura; sin redeploy ni pagos):
+Despliegue en funcionamiento (verificado desde Internet y desde el panel de Railway; sin pagos reales):
 
 ```text
 Vercel — React SPA
     ↓ HTTPS /api (CORS para origen Vercel)
 Railway — NestJS + Fastify
     ↓ DATABASE_URL privada
-Railway — MySQL/MariaDB (ubicación informada por el responsable del proyecto)
+Railway — MySQL (servicio administrado en el mismo proyecto Railway)
 ```
 
 | Componente | Proveedor | Dirección / verificación |
@@ -176,12 +176,12 @@ Railway — MySQL/MariaDB (ubicación informada por el responsable del proyecto)
 | Frontend | Vercel | https://development-test-ebon.vercel.app/productos — HTML SPA público por HTTPS. |
 | Backend/API | Railway | https://backend-production-ca58.up.railway.app/api — esta URL está incorporada en el bundle público de Vercel; `GET /api/productos` respondió **200** con 20 productos. La versión pública **no usa la URL local** de `VITE_API_URL` del entorno de desarrollo. |
 | Swagger | Railway | https://backend-production-ca58.up.railway.app/api/docs — `GET` respondió **200** por HTTPS. |
-| Base de datos | Railway (según configuración reportada) | La lectura del catálogo desde la API responde 200, señal de conexión a una fuente de datos. Sin acceso al panel de Railway no se comprobó directamente host, variables privadas, backups ni aplicación del SQL aditivo en la base cloud. |
-| GitHub | Repositorio público | https://github.com/jarison102/Development-Test — HTTP 200; el **nombre del repositorio** no contiene el nombre del proveedor de pagos. |
+| Base de datos | Railway | Servicio MySQL administrado dentro del mismo proyecto Railway que el backend, conectado por `DATABASE_URL` privada (red interna). Confirmado en el panel de Railway; el esquema completo (incluidas `transaccion_items` y `payment_attempt_items`) está aplicado: `GET /api/productos` y `GET /api/transacciones/:id` responden **200**. |
+| GitHub | Repositorio público | https://github.com/jarison102/Development-Test — HTTP 200; el **nombre del repositorio** no contiene el nombre del proveedor de pagos. `backend/.env` ya no está versionado. |
 
-Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/productos` y `/api/docs`: `Access-Control-Allow-Origin` devuelve ese origen; preflight `OPTIONS /api/transacciones/cotizar` devolvió **204** y permite GET/POST/OPTIONS. No se consultó `GET /api/payments/terms` porque puede devolver material público de tokenización no necesario para esta auditoría. Las variables necesarias aparecen **solo por nombre** en «Variables de entorno». La `.env` local puede apuntar a localhost sin afectar el bundle desplegado; producción debe conservar `VITE_API_URL` apuntando a Railway y `FRONTEND_ORIGIN` al origen Vercel. La configuración privada de Railway y la ubicación física de su BD requieren confirmación en el panel.
+Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/productos` y `/api/docs`: `Access-Control-Allow-Origin` devuelve ese origen; preflight `OPTIONS /api/transacciones/cotizar` devolvió **204** y permite GET/POST/OPTIONS. No se consultó `GET /api/payments/terms` porque puede devolver material público de tokenización no necesario para esta auditoría. Las variables necesarias aparecen **solo por nombre** en «Variables de entorno». La `.env` local puede apuntar a localhost sin afectar el bundle desplegado; producción debe conservar `VITE_API_URL` apuntando a Railway y `FRONTEND_ORIGIN` al origen Vercel. Backend y MySQL corren en Railway (un servicio de cada uno, sin infraestructura adicional); el frontend en Vercel. Ambos en planes gratuitos.
 
-**Bloqueo de seguridad antes de compartir el enlace final:** un commit público histórico sigue exponiendo la ruta `backend/.env`. Revocar/rotar las credenciales asociadas y confirmar los cambios de Railway antes de entregar (véase «Seguridad»). Este despliegue es Sandbox: no utilizarlo para pagos reales; un uso productivo exigiría controles adicionales (p. ej., webhooks autenticados y respuesta ante una aprobación externa sin liquidación local).
+**Nota de seguridad:** `backend/.env` fue retirado del repositorio (véase «Seguridad»); las credenciales Sandbox históricas deben rotarse. Este despliegue es Sandbox: no utilizarlo para pagos reales; un uso productivo exigiría controles adicionales (p. ej., webhooks autenticados y respuesta ante una aprobación externa sin liquidación local).
 
 ## Decisiones arquitectónicas
 
@@ -209,17 +209,17 @@ Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/produc
 | Lógica separada de controllers | ✅ Cumple | Casos de uso en `application/`, reglas en `domain/`. | — |
 | Hexagonal / Ports & Adapters | ✅ Cumple | Puertos y adaptadores Prisma/Wompi inyectados en módulos NestJS. | — |
 | ROP | ❌ No cumple | No hay `Result`/`Either` ni composición Railway; se usan excepciones. | Bonus no reclamado; no se agregó artificialmente. |
-| MySQL/MariaDB | ✅ Cumple | `backend/prisma/schema.prisma` usa `mysql`; catálogo público servido. | Confirmar host cloud en panel Railway. |
+| MySQL/MariaDB | ✅ Cumple | `backend/prisma/schema.prisma` usa `mysql`; MySQL administrado en Railway sirve el catálogo público. | — |
 | Prisma | ✅ Cumple | Prisma Client, repositorios y esquema introspectado. | — |
-| Seed dummy | ⚠️ Parcial | `backend/prisma/seed.ts` y `npm run db:seed`; inserta solo si no hay productos ajenos y nunca actualiza existentes. | No ejecutado sobre Railway; comprobar dummies allí si se exige evidencia. |
+| Seed dummy | ✅ Cumple | `backend/prisma/seed.ts` y `npm run db:seed`; inserta solo si no hay productos ajenos y nunca actualiza existentes. La base de Railway contiene los productos de demostración (p. ej. «Audífonos Pro Demo», «Teclado Mecánico Demo») más el catálogo cargado; `GET /api/productos` público devuelve 20 productos. | — |
 | Endpoints stock/transacciones/clientes/entregas | ✅ Cumple | Módulos y controladores; `/api/productos` GET público 200. | No se realizaron POST contra producción. |
 | Swagger / documentación API | ✅ Cumple | `/api/docs` en Railway GET 200. | — |
 | Jest frontend/backend | ✅ Cumple | 102 y 107 tests aprobados con mocks. | — |
 | Coverage global >80% | ✅ Cumple | Frontend 93.53/87.89/94.84/97.38; backend 95.86/89.42/94.68/97.36 (S/B/F/L). | Algunos archivos individuales no llegan a 80%; el criterio global sí. |
 | Sandbox | ✅ Cumple | Adapter restringe credenciales de prueba; registros previos DECLINED/APPROVED; tests PENDING/idempotencia. | No se repitieron pagos reales en esta fase. |
-| Seguridad | ⚠️ Parcial | Tarjeta no persistida, JWE, DTOs, HTTPS; `.env.example` sin valores reales. | `backend/.env` es accesible en un commit histórico público: revocar/rotar credenciales y evaluar historial antes de entregar. |
-| GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor. | No hacer push hasta resolver hallazgo de seguridad. |
+| Seguridad | ⚠️ Parcial | Tarjeta no persistida, JWE, DTOs, HTTPS, CORS restringido al origen Vercel; secretos solo en Railway; `backend/.env` eliminado del repositorio (commit `4440720`); `.env.example` sin valores reales. | Rotar las credenciales Sandbox presentes en commits históricos. |
+| GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor; sin `.env` versionado. | — |
 | Frontend deploy | ✅ Cumple | Vercel HTTPS y bundle apunta a API Railway. | — |
 | Backend deploy | ✅ Cumple | Railway HTTPS, catálogo y Swagger GET 200, CORS/preflight válidos. | — |
-| Database deploy | ⚠️ Parcial | Railway indicado por el responsable; lectura pública del catálogo funciona. | Confirmar host y esquema cloud directamente en panel Railway, sin publicar credenciales. |
+| Database deploy | ✅ Cumple | Servicio MySQL en Railway (mismo proyecto que el backend, conexión privada `DATABASE_URL`); esquema completo aplicado; catálogo y transacciones responden 200 desde Internet. | — |
 | Modal de tarjeta / backdrop de resumen del enunciado | ⚠️ Parcial | Flujo funcional en páginas `CheckoutPage`/`SummaryPage`, no modal/backdrop literal. | Diferencia visual con el documento; sin cambios funcionales en esta fase. |
