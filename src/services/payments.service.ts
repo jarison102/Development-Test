@@ -35,7 +35,7 @@ export async function tokenizeCard(card: Card, terms: PaymentTerms): Promise<str
   const publicSandbox = terms.sandboxUrl === 'https://sandbox.wompi.co/v1' && terms.publicKey.startsWith('pub_test_')
   const testUat = terms.sandboxUrl === 'https://api-sandbox.co.uat.wompi.dev/v1'
     && terms.publicKey.startsWith('pub_stagtest_')
-  if (!publicSandbox && !testUat) throw new ApiError('Configuración Sandbox inválida.')
+  if (!publicSandbox && !testUat) throw new ApiError('El pago de prueba no está disponible en este momento. Intenta más tarde.')
   try {
     const payload = await encryptCard(card, terms.tokenizationKey)
     const result = await apiRequest<{ token: string }>('/payments/tokenize', {
@@ -44,7 +44,7 @@ export async function tokenizeCard(card: Card, terms: PaymentTerms): Promise<str
     if (!/^tok_(?!prod_)[a-zA-Z0-9_-]+$/.test(result.token)) throw new Error()
     return result.token
   } catch {
-    throw new ApiError('No se pudo tokenizar la tarjeta en Wompi Sandbox. Comprueba la conexión y vuelve a intentarlo.')
+    throw new ApiError('No pudimos procesar los datos de tu tarjeta. Revisa tu conexión e inténtalo de nuevo.')
   }
 }
 

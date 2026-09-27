@@ -12,11 +12,11 @@ export function OrderSummary({ product, summary, names = [] }: { product: Produc
           <dd>{formatCurrency(item.subtotal)}</dd>
         </div>) : <div><dt>{product.name} · {summary.quantity} {summary.quantity === 1 ? 'unidad' : 'unidades'} · {formatCurrency((Number(summary.subtotal) / summary.quantity).toFixed(2))} c/u</dt><dd>{formatCurrency(summary.subtotal)}</dd></div>}
         {summary.items && <div><dt>Productos</dt><dd>{formatCurrency(summary.subtotal)}</dd></div>}
-        <div><dt>Tarifa base</dt><dd>{formatCurrency(summary.baseFee)}</dd></div>
+        <div><dt>Tarifa de servicio</dt><dd>{formatCurrency(summary.baseFee)}</dd></div>
         <div><dt>Envío</dt><dd>{formatCurrency(summary.shippingFee)}</dd></div>
         <div className="total-row"><dt>Total</dt><dd>{formatCurrency(summary.total)}</dd></div>
       </dl>
-      <p className="caption">Importes del backend. La cotización se vuelve a validar al crear la transacción.</p>
+      <p className="caption">Este es el desglose de los importes de tu compra.</p>
     </section>
   )
 }

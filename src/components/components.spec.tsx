@@ -39,6 +39,8 @@ describe('OrderSummary', () => {
   it('usa singular para una unidad', () => {
     inRouter(<OrderSummary product={product} summary={{ ...base, quantity: 1 }} />)
     expect(screen.getByText(/Audífonos · 1 unidad ·/)).toBeInTheDocument()
+    expect(screen.getByText('Tarifa de servicio')).toBeInTheDocument()
+    expect(screen.getByText('Este es el desglose de los importes de tu compra.')).toBeInTheDocument()
   })
 
   it('pinta artículos y precios unitarios históricos proporcionados por backend', () => {

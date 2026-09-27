@@ -63,7 +63,7 @@ export function SummaryPage() {
       return
     }
     const card = getCard()
-    if (!card) { setPayError('Vuelve al checkout e introduce la tarjeta; no se conserva al recargar.'); return }
+    if (!card) { setPayError('Vuelve a los datos de pago e introduce tu tarjeta; por seguridad, no se conserva al recargar.'); return }
     if (!delivery.address.trim() || !delivery.city.trim() || !delivery.department.trim()) {
       setPayError('Completa la información de entrega.'); return
     }
@@ -110,8 +110,8 @@ export function SummaryPage() {
       <section className="page-section narrow-section">
         <span className="eyebrow">Paso 3 de 4</span>
         <h1>Resumen de compra</h1>
-        <p>El backend recalcula importes y comprueba el stock al crear la orden; reserva disponibilidad justo antes del pago.</p>
-        {transaction.id && !transaction.record && <p role="status">Consultando transacción existente…</p>}
+        <p>Revisa los importes y las unidades disponibles. Si el total cambia antes de pagar, te pediremos que lo confirmes de nuevo. Esta compra es de prueba y no genera un cobro real.</p>
+        {transaction.id && !transaction.record && <p role="status">Consultando el estado de tu compra…</p>}
         {!transaction.id && quoteStatus === 'loading' && <p role="status">Calculando importes…</p>}
         {!transaction.id && quoteError && <div role="alert"><p>{quoteError}</p><button className="button" onClick={() => { if (cartItems.length) void dispatch(fetchCartQuote()); else void dispatch(fetchQuote({ productId: product.id, quantity })) }}>Reintentar cotización</button></div>}
         {summary && <OrderSummary product={product} summary={summary} names={[...catalog, ...cartItems.map((item) => ({
@@ -132,13 +132,14 @@ export function SummaryPage() {
           setPayError(null)
           setTermsRetry((value) => value + 1)
         }}>Reintentar documentos</button>}
-        {transaction.id && <p className="notice">La orden ya existe; el pago no creará una segunda transacción interna. <Link to={`/resultado/${product.id}`}>Consultar estado</Link></p>}
+        {(transaction.record?.status === 'APROBADA' || transaction.record?.status === 'RECHAZADA') &&
+          <p className="notice"><span>El pago fue {transaction.record.status === 'APROBADA' ? 'aprobado' : 'rechazado'}.</span> <Link to={`/resultado/${product.id}`}>Consultar estado</Link></p>}
         <div className="page-actions">
-          <Link className="text-link" to={`/checkout/${product.id}`}>← Volver a los datos</Link>
+          <Link className="button button-secondary" to={`/checkout/${product.id}`}>← Volver a los datos</Link>
           {transaction.record?.status !== 'APROBADA' && transaction.record?.status !== 'RECHAZADA' ? (
             <button className="button" type="button" onClick={() => void confirm()}
               disabled={!clientId || !terms || !privacyAccepted || !personalAccepted || !summary || (!transaction.id && quoteStatus !== 'succeeded') || paying || transaction.creating}>
-              {paying || transaction.creating ? 'Procesando pago…' : 'Pagar en Sandbox'}
+              {paying || transaction.creating ? 'Procesando pago…' : 'Simular pago'}
             </button>
           ) : <Link className="button" to={`/resultado/${product.id}`}>Consultar resultado</Link>}
         </div>

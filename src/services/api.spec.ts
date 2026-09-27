@@ -33,7 +33,7 @@ describe('HTTP y catálogo', () => {
 
   it('avisa cuando el servidor está desconectado', async () => {
     mockFetch.mockRejectedValue(new TypeError('Failed to fetch'))
-    await expect(apiRequest('/productos')).rejects.toThrow('No se pudo conectar con el backend')
+    await expect(apiRequest('/productos')).rejects.toThrow('No pudimos conectarnos')
   })
 
   it('cancela peticiones que superan el tiempo límite', async () => {

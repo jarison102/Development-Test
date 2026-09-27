@@ -125,7 +125,7 @@ describe('checkoutSlice', () => {
     expect(appStore.getState().checkout.quoteStatus).toBe('loading')
     appStore.dispatch(fetchQuote.rejected(new Error('x'), 'req-a', { productId: 1, quantity: 1 }))
     expect(appStore.getState().checkout.quoteStatus).toBe('failed')
-    expect(appStore.getState().checkout.quoteError).toBe('No se pudo calcular el resumen.')
+    expect(appStore.getState().checkout.quoteError).toBe('No pudimos calcular el total de tu compra. Intenta de nuevo.')
   })
 
   it('registerCustomer no se repite si ya existe clientId', async () => {
@@ -150,7 +150,7 @@ describe('transactionSlice', () => {
   it('exige cliente y resumen antes de crear la transacción', async () => {
     const appStore = createAppStore()
     await appStore.dispatch(submitTransaction())
-    expect(appStore.getState().transaction.error).toBe('Completa el cliente y el resumen antes de confirmar.')
+    expect(appStore.getState().transaction.error).toBe('Completa tus datos y revisa el resumen antes de confirmar.')
     expect(createTransaction).not.toHaveBeenCalled()
   })
 
@@ -181,7 +181,7 @@ describe('transactionSlice', () => {
   it('verifyPayment exige la clave de idempotencia persistida', async () => {
     const appStore = createAppStore()
     await appStore.dispatch(verifyPayment(18))
-    expect(appStore.getState().transaction.error).toBe('No se puede verificar el pago sin la clave de la orden.')
+    expect(appStore.getState().transaction.error).toBe('No pudimos consultar el estado de tu pago. Intenta de nuevo.')
     expect(checkPayment).not.toHaveBeenCalled()
   })
 
@@ -200,11 +200,11 @@ describe('transactionSlice', () => {
   it('informa errores de consulta con mensaje por defecto', () => {
     const appStore = createAppStore()
     appStore.dispatch(refreshTransaction.rejected(new Error('x'), 'r', 18))
-    expect(appStore.getState().transaction.error).toBe('No se pudo consultar la transacción.')
+    expect(appStore.getState().transaction.error).toBe('No pudimos consultar el estado de tu compra. Intenta de nuevo.')
     appStore.dispatch(verifyPayment.rejected(new Error('x'), 'r', 18))
-    expect(appStore.getState().transaction.error).toBe('No se pudo verificar el pago.')
+    expect(appStore.getState().transaction.error).toBe('No pudimos confirmar el estado de tu pago. Intenta de nuevo.')
     appStore.dispatch(submitTransaction.rejected(new Error('x'), 'r', undefined))
-    expect(appStore.getState().transaction.error).toBe('No se pudo crear la transacción.')
+    expect(appStore.getState().transaction.error).toBe('No pudimos iniciar tu compra. Intenta de nuevo.')
   })
 })
 

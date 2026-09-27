@@ -26,12 +26,12 @@ function statusMessage(status: number, body: unknown): string {
     return message === 'Stock insuficiente' ? 'No hay unidades suficientes para esta compra.'
       : 'Estos datos ya están registrados o entran en conflicto con la compra.'
   }
-  return status >= 500 ? 'El servidor no pudo completar la solicitud. Intenta más tarde.'
+  return status >= 500 ? 'No pudimos completar tu solicitud. Intenta más tarde.'
     : 'No se pudo completar la solicitud.'
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!apiUrl) throw new ApiError('Configura VITE_API_URL para conectar con el backend.')
+  if (!apiUrl) throw new ApiError('No podemos procesar tu compra en este momento. Intenta más tarde.')
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10000)
   const onAbort = () => controller.abort()
@@ -46,7 +46,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     const body: unknown = await response.json().catch(() => null)
     if (!response.ok) throw new ApiError(statusMessage(response.status, body), response.status)
     if (typeof body !== 'object' || body === null || !('data' in body)) {
-      throw new ApiError('El servidor devolvió una respuesta inesperada.')
+      throw new ApiError('No pudimos cargar la información. Intenta de nuevo.')
     }
     return (body as ApiEnvelope<T>).data
   } catch (error) {
@@ -55,7 +55,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
       throw new ApiError('La solicitud tardó demasiado. Comprueba el estado antes de reintentar.')
     }
     if (options.signal?.aborted) throw error
-    throw new ApiError('No se pudo conectar con el backend. Comprueba que esté en ejecución.')
+    throw new ApiError('No pudimos conectarnos. Revisa tu conexión e inténtalo de nuevo.')
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onAbort)

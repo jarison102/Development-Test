@@ -109,7 +109,7 @@ const checkoutSlice = createSlice({
       .addCase(registerCustomer.rejected, (state, action) => {
         if (action.meta.condition) return
         state.clientStatus = 'failed'
-        state.clientError = action.payload ?? 'No se pudo registrar el cliente.'
+        state.clientError = action.payload ?? 'No pudimos guardar tus datos. Intenta de nuevo.'
       })
       .addCase(fetchQuote.pending, (state, action) => {
         state.quote = null
@@ -125,7 +125,7 @@ const checkoutSlice = createSlice({
       .addCase(fetchQuote.rejected, (state, action) => {
         if (state.quoteRequestId !== action.meta.requestId) return
         state.quoteStatus = 'failed'
-        state.quoteError = action.payload ?? 'No se pudo calcular el resumen.'
+        state.quoteError = action.payload ?? 'No pudimos calcular el total de tu compra. Intenta de nuevo.'
       })
       .addCase(fetchCartQuote.pending, (state, action) => {
         state.quote = null; state.quoteStatus = 'loading'; state.quoteError = null; state.quoteRequestId = action.meta.requestId
@@ -136,7 +136,7 @@ const checkoutSlice = createSlice({
       })
       .addCase(fetchCartQuote.rejected, (state, action) => {
         if (state.quoteRequestId !== action.meta.requestId) return
-        state.quoteStatus = 'failed'; state.quoteError = action.payload ?? 'No se pudo calcular el resumen.'
+        state.quoteStatus = 'failed'; state.quoteError = action.payload ?? 'No pudimos calcular el total de tu compra. Intenta de nuevo.'
       })
       .addMatcher((action) => [addProduct.type, clearCart.type, decreaseQuantity.type, increaseQuantity.type, removeProduct.type].includes(action.type), (state) => {
         state.quote = null; state.quoteStatus = 'idle'; state.quoteRequestId = null; state.idempotencyKey = null

@@ -25,12 +25,12 @@ function toQuote(data: ApiQuote): PurchaseSummary {
   if (!Number.isSafeInteger(data.productoId) || !Number.isSafeInteger(data.cantidad)
     || ![data.subtotal, data.tarifaBase, data.tarifaEnvio, data.total]
       .every((amount) => typeof amount === 'string' && /^\d+\.\d{2}$/.test(amount))) {
-    throw new ApiError('El servidor devolvió importes inválidos.')
+    throw new ApiError('No pudimos calcular el total de tu compra. Intenta de nuevo.')
   }
   if (data.items !== undefined && (!Array.isArray(data.items) || data.items.length === 0 || !data.items.every((item) =>
     Number.isSafeInteger(item.productoId) && item.productoId > 0 && Number.isSafeInteger(item.cantidad)
     && item.cantidad > 0 && [item.precioUnitario, item.subtotal].every((amount) => typeof amount === 'string' && /^\d+\.\d{2}$/.test(amount))))) {
-    throw new ApiError('El servidor devolvió artículos inválidos.')
+    throw new ApiError('No pudimos cargar los productos de tu compra. Intenta de nuevo.')
   }
   return {
     ...(data.items ? { items: data.items.map((item) => ({ productId: item.productoId, quantity: item.cantidad,
@@ -45,7 +45,7 @@ export function toTransaction(data: ApiTransaction): TransactionRecord {
   if (!Number.isSafeInteger(data.id) || !Number.isSafeInteger(data.clienteId)
     || typeof data.referencia !== 'string'
     || !['PENDIENTE', 'APROBADA', 'RECHAZADA'].includes(data.estado)) {
-    throw new ApiError('El servidor devolvió una transacción inválida.')
+    throw new ApiError('No pudimos consultar tu compra. Intenta de nuevo.')
   }
   return {
     id: data.id, reference: data.referencia, customerId: data.clienteId,

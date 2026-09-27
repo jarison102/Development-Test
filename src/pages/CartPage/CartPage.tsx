@@ -18,14 +18,15 @@ export function CartPage() {
   return <>
     <CheckoutSteps current="producto" />
     <section className="page-section">
-      <h1>Carrito</h1>
-      {loading && <p role="status">Actualizando stock del catálogo…</p>}
+      <div className="cart-hero"><span className="eyebrow">Tu selección</span><h1>Carrito</h1>
+        <p>{items.length ? 'Revisa tus productos y ajusta las cantidades antes de continuar.' : 'Aquí aparecerán los productos que agregues.'}</p></div>
+      {loading && <p role="status">Comprobando las unidades disponibles…</p>}
       {error && <div role="alert"><p>{error}</p><button className="button" onClick={() => void dispatch(fetchProducts())}>Reintentar</button></div>}
       {locked && <p className="notice">Hay una orden en proceso. Consulta su estado antes de modificar el carrito.</p>}
       {items.length === 0 ? <div className="panel empty-state"><p>Tu carrito está vacío.</p><Link className="button" to="/productos">Ver productos</Link></div> : <>
         <div className="cart-list">{items.map((item) => <article className="panel cart-item" key={item.productId}>
           <div className="product-visual" aria-hidden="true">{item.image ? <img src={item.image} alt="" /> : item.name.charAt(0)}</div>
-          <div><h2>{item.name}</h2><p>Precio unitario: {formatCurrency(item.price)}</p><p>Stock disponible: {item.stock}</p>
+          <div><h2>{item.name}</h2><p>Precio unitario: {formatCurrency(item.price)}</p><p>Unidades disponibles: {item.stock}</p>
             <p>Subtotal: {formatCurrency(cartSubtotal(item))}</p>
             <div className="cart-controls">
               <button type="button" aria-label={`Disminuir ${item.name}`} disabled={locked || item.quantity <= 1} onClick={() => dispatch(decreaseQuantity(item.productId))}>−</button>
@@ -36,11 +37,11 @@ export function CartPage() {
           </div>
         </article>)}</div>
         <p className="panel cart-total">Total de productos: <strong>{formatCurrency(cartTotal(items))}</strong></p>
-        <p className="caption">Tarifa base, envío y total definitivo se calculan en el backend al continuar.</p>
-        <div className="page-actions"><Link className="text-link" to="/productos">← Seguir comprando</Link>
+        <p className="caption">Verás la tarifa de servicio, el envío y el total antes de confirmar tu pago.</p>
+        <div className="page-actions"><Link className="button button-secondary" to="/productos">← Seguir comprando</Link>
           {locked ? <Link className="button" to={`/resultado/${items[0].productId}`}>Consultar compra pendiente</Link>
             : <Link className="button" to={`/checkout/${items[0].productId}`} aria-disabled={loading || !!error || items.some((item) => item.stock < item.quantity)}
-              onClick={(event) => { if (loading || error || items.some((item) => item.stock < item.quantity)) event.preventDefault() }}>Ir al checkout</Link>}
+              onClick={(event) => { if (loading || error || items.some((item) => item.stock < item.quantity)) event.preventDefault() }}>Continuar compra</Link>}
         </div>
       </>}
     </section>

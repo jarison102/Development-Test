@@ -4,7 +4,7 @@ export function ProductUnavailable() {
   return (
     <section className="panel empty-state">
       <h1>Producto no disponible</h1>
-      <p>No encontramos ese producto en el catálogo de demostración.</p>
+      <p>No encontramos ese producto. Elige otro del catálogo.</p>
       <Link className="button" to="/productos">Ver productos</Link>
     </section>
   )

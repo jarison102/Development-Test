@@ -30,7 +30,7 @@ describe('clientes.service', () => {
   it.each([{ id: 0 }, { id: -2 }, { id: '7' }, { id: 1.5 }])('rechaza un identificador inválido %o', async (data) => {
     mockFetch.mockResolvedValue(ok(data))
     await expect(createCustomer({ name: 'Ana', email: 'a@e.test', phone: '300' }))
-      .rejects.toThrow('cliente inválido')
+      .rejects.toThrow('No pudimos guardar tus datos')
   })
 })
 
@@ -128,6 +128,6 @@ describe('productos.service', () => {
   ])('rechaza un producto con %s', async (_caso, override) => {
     mockFetch.mockResolvedValue(ok({ id: 1, nombre: 'P', descripcion: 'D', precio: '1.00',
       stock: 1, imagen: null, activo: true, ...override }))
-    await expect(getProduct(1)).rejects.toThrow('producto inválido')
+    await expect(getProduct(1)).rejects.toThrow('No pudimos mostrar este producto')
   })
 })

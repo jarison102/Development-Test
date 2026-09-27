@@ -16,7 +16,7 @@ function toProduct(value: ApiProduct): Product {
     || typeof value.descripcion !== 'string' || typeof value.precio !== 'string'
     || !/^\d+\.\d{2}$/.test(value.precio) || !Number.isSafeInteger(value.stock)
     || value.stock < 0 || (value.imagen !== null && typeof value.imagen !== 'string')) {
-    throw new ApiError('El servidor devolvió un producto inválido.')
+    throw new ApiError('No pudimos mostrar este producto. Intenta de nuevo.')
   }
   return {
     id: value.id, name: value.nombre, description: value.descripcion,
@@ -26,7 +26,7 @@ function toProduct(value: ApiProduct): Product {
 
 export async function getProducts(): Promise<Product[]> {
   const items = await apiRequest<ApiProduct[]>('/productos')
-  if (!Array.isArray(items)) throw new ApiError('El servidor devolvió un catálogo inválido.')
+  if (!Array.isArray(items)) throw new ApiError('No pudimos mostrar los productos. Intenta de nuevo.')
   return items.map(toProduct)
 }
 

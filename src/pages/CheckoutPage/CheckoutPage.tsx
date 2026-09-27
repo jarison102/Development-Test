@@ -61,8 +61,8 @@ export function CheckoutPage() {
   if (loading) return <p role="status">Cargando producto…</p>
   if (error) return <section role="alert"><p>{error}</p><button className="button" onClick={() => void dispatch(fetchProduct(Number(id)))}>Reintentar</button></section>
   if (!product) return <ProductUnavailable />
-  if (!ready) return <p role="status">Preparando checkout…</p>
-  if (transaction.record && transaction.record.status !== 'PENDIENTE') return <section className="panel"><p>La compra ya tiene un resultado.</p><Link to={`/resultado/${product.id}`}>Consultar transacción</Link></section>
+  if (!ready) return <p role="status">Preparando el pago…</p>
+  if (transaction.record && transaction.record.status !== 'PENDIENTE') return <section className="panel"><p>Ya puedes consultar el resultado de esta compra.</p><Link className="button button-secondary" to={`/resultado/${product.id}`}>Ver resultado</Link></section>
 
   return (
     <>
@@ -70,7 +70,7 @@ export function CheckoutPage() {
       <section className="page-section">
         <span className="eyebrow">Paso 2 de 4</span>
         <h1>Tarjeta y entrega</h1>
-        <p>La tarjeta solo permanece en memoria; se cifra como JWE en el navegador y se tokeniza en Wompi Sandbox a través del backend. Si recargas, vuelve a introducirla.</p>
+        <p>Esta compra es de prueba: no se realizará ningún cobro real. Tus datos de tarjeta no se guardan; si recargas la página, deberás ingresarlos de nuevo.</p>
         <form onSubmit={(event) => void submit(event)} autoComplete="off">
           <div className="form-grid">
             <section className="panel" aria-labelledby="card-heading">
@@ -110,7 +110,7 @@ export function CheckoutPage() {
           {cardError && <p role="alert" className="notice">{cardError}</p>}
           {clientError && <p role="alert" className="notice">{clientError}</p>}
           <div className="page-actions">
-            <Link className="text-link" to={cartItems.length ? '/carrito' : `/productos/${product.id}`}>← Volver {cartItems.length ? 'al carrito' : 'al producto'}</Link>
+            <Link className="button button-secondary" to={cartItems.length ? '/carrito' : `/productos/${product.id}`}>← Volver {cartItems.length ? 'al carrito' : 'al producto'}</Link>
             <button className="button" type="submit" disabled={clientStatus === 'loading' || !terms || !privacyAccepted || !personalAccepted}>
               {clientStatus === 'loading' ? 'Guardando cliente…' : 'Guardar y ver resumen'}
             </button>

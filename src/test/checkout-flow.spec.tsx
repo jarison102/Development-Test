@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import App from '../App'
@@ -59,10 +59,11 @@ test('recorre catálogo real, registra cliente, cotiza y crea una sola transacci
   const view = open('/productos')
   expect(await screen.findByText('Tercer producto')).toBeInTheDocument()
   fireEvent.click(screen.getAllByRole('link', { name: 'Ver producto' })[0])
-  expect(await screen.findByText('Stock disponible: 10')).toBeInTheDocument()
+  expect(await screen.findByText('Unidades disponibles: 10')).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Cantidad'), { target: { value: '2' } })
   fireEvent.click(screen.getByRole('link', { name: 'Comprar con tarjeta' }))
   expect(await screen.findByRole('heading', { name: 'Tarjeta y entrega' })).toBeInTheDocument()
+  expect(screen.getByText(/Esta compra es de prueba: no se realizará ningún cobro real/)).toBeInTheDocument()
   expect(await screen.findByRole('checkbox', { name: /política de privacidad/i })).not.toBeChecked()
   expect(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i })).not.toBeChecked()
   expect(screen.getByRole('button', { name: 'Guardar y ver resumen' })).toBeDisabled()
@@ -84,9 +85,10 @@ test('recorre catálogo real, registra cliente, cotiza y crea una sola transacci
     name: 'Cliente Ejemplo', email: 'cliente@example.test', phone: '3000000000',
   }))
   expect(await screen.findByRole('heading', { name: 'Resumen de compra' })).toBeInTheDocument()
+  expect(screen.getByText(/Si el total cambia antes de pagar, te pediremos que lo confirmes de nuevo/)).toBeInTheDocument()
   await waitFor(() => expect(quoteTransaction).toHaveBeenCalledWith(1, 2))
   expect(await screen.findByText(/506[.,]500/)).toBeInTheDocument()
-  const confirm = screen.getByRole('button', { name: 'Pagar en Sandbox' })
+  const confirm = screen.getByRole('button', { name: 'Simular pago' })
   await waitFor(() => expect(confirm).toBeEnabled())
   fireEvent.click(screen.getByRole('checkbox', { name: /política de privacidad/i }))
   expect(confirm).toBeDisabled()
@@ -94,7 +96,7 @@ test('recorre catálogo real, registra cliente, cotiza y crea una sola transacci
   fireEvent.click(confirm)
   expect(screen.getByRole('button', { name: 'Procesando pago…' })).toBeDisabled()
   fireEvent.click(confirm)
-  expect(await screen.findByRole('heading', { name: 'Transacción creada - pendiente de pago' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Compra pendiente de confirmación' })).toBeInTheDocument()
   expect(createTransaction).toHaveBeenCalledTimes(1)
   expect(createTransaction).toHaveBeenCalledWith(1, 7, 2, expect.any(String))
   expect(payTransaction).toHaveBeenCalledTimes(1)
@@ -130,6 +132,152 @@ test('el icono del carrito muestra unidades agregadas, cambios de cantidad y rec
   expect(screen.getByRole('link', { name: 'Carrito: 1 unidad' })).toHaveTextContent('1')
 })
 
+test('busca productos por nombre y descripción, ignorando mayúsculas y acentos', async () => {
+  open('/productos')
+  await screen.findByText('Tercer producto')
+  const search = screen.getByRole('searchbox', { name: 'Buscar productos' })
+  fireEvent.change(search, { target: { value: 'TECLADO' } })
+  expect(screen.getByRole('heading', { name: 'Teclado' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Mouse' })).not.toBeInTheDocument()
+  fireEvent.change(search, { target: { value: 'audifonos' } })
+  expect(screen.getByRole('heading', { name: 'Audífonos Pro' })).toBeInTheDocument()
+  fireEvent.change(search, { target: { value: 'tercer' } })
+  expect(screen.getByRole('heading', { name: 'Mouse' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Teclado' })).not.toBeInTheDocument()
+  expect(screen.getByText('1 de 3 productos')).toBeInTheDocument()
+})
+
+test('filtra por disponibilidad y precio, y permite limpiar filtros sin resultados', async () => {
+  jest.mocked(getProducts).mockResolvedValueOnce([{ ...products[0], stock: 0 }, ...products.slice(1)])
+  open('/productos')
+  await screen.findByText('Tercer producto')
+  fireEvent.change(screen.getByRole('combobox', { name: 'Disponibilidad' }), { target: { value: 'disponibles' } })
+  expect(screen.queryByRole('heading', { name: 'Audífonos Pro' })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Precio máximo (COP)' }), { target: { value: '200000' } })
+  expect(screen.getByRole('heading', { name: 'Mouse' })).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Teclado' })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Disponibilidad' }), { target: { value: 'agotados' } })
+  expect(screen.getByText('No encontramos productos con esos filtros.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
+  expect(screen.getAllByRole('button', { name: 'Agregar al carrito' })).toHaveLength(3)
+  expect(screen.getByRole('combobox', { name: 'Disponibilidad' })).toHaveValue('todos')
+})
+
+test('las tarjetas aparecen al entrar en pantalla tanto al bajar como al subir', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'IntersectionObserver')
+  let notify: IntersectionObserverCallback = () => {}
+  const observe = jest.fn()
+  const disconnect = jest.fn()
+  Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: class {
+    constructor(callback: IntersectionObserverCallback) { notify = callback }
+    observe = observe
+    disconnect = disconnect
+  } })
+  try {
+    const view = open('/productos')
+    await screen.findByText('Tercer producto')
+    const grid = view.container.querySelector('.product-grid')!
+    const cards = Array.from(grid.querySelectorAll('.product-arrival'))
+    expect(grid).toHaveClass('reveal-active')
+    expect(observe).toHaveBeenCalledTimes(products.length)
+    act(() => notify([{ target: cards[0], isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
+    expect(cards[0]).toHaveClass('is-visible')
+    act(() => notify([{ target: cards[0], isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver))
+    expect(cards[0]).not.toHaveClass('is-visible')
+    act(() => notify([{ target: cards[0], isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
+    expect(cards[0]).toHaveClass('is-visible')
+    view.unmount()
+    expect(disconnect).toHaveBeenCalled()
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'IntersectionObserver', original)
+    else Reflect.deleteProperty(globalThis, 'IntersectionObserver')
+  }
+})
+
+test('muestra los productos sin ocultarlos si se prefiere reducir el movimiento', async () => {
+  const originalObserver = Object.getOwnPropertyDescriptor(globalThis, 'IntersectionObserver')
+  const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia')
+  const observer = jest.fn()
+  Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: observer })
+  Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: true }) })
+  try {
+    const view = open('/productos')
+    await screen.findByText('Tercer producto')
+    expect(view.container.querySelector('.product-grid')).not.toHaveClass('reveal-active')
+    expect(observer).not.toHaveBeenCalled()
+    view.unmount()
+  } finally {
+    if (originalObserver) Object.defineProperty(globalThis, 'IntersectionObserver', originalObserver)
+    else Reflect.deleteProperty(globalThis, 'IntersectionObserver')
+    if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia)
+    else Reflect.deleteProperty(window, 'matchMedia')
+  }
+})
+
+test('volver al catálogo y al carrito usa botones visibles', async () => {
+  open('/carrito')
+  await screen.findByText('Tu carrito está vacío.')
+  fireEvent.click(screen.getByRole('link', { name: 'Ver productos' }))
+  const add = await screen.findAllByRole('button', { name: 'Agregar al carrito' })
+  fireEvent.click(add[0])
+  fireEvent.click(screen.getByRole('link', { name: 'Carrito: 1 unidad' }))
+  expect(screen.getByRole('link', { name: '← Seguir comprando' })).toHaveClass('button', 'button-secondary')
+  await waitFor(() => expect(screen.getByRole('link', { name: 'Continuar compra' })).toHaveAttribute('aria-disabled', 'false'))
+  fireEvent.click(screen.getByRole('link', { name: 'Continuar compra' }))
+  expect(await screen.findByRole('link', { name: '← Volver al carrito' })).toHaveClass('button', 'button-secondary')
+})
+
+test('el detalle presenta volver al catálogo y ver carrito como botones', async () => {
+  open('/productos/1')
+  const back = await screen.findByRole('link', { name: '← Todos los productos' })
+  expect(back).toHaveClass('button', 'button-secondary')
+  expect(screen.getByRole('link', { name: 'Ver carrito' })).toHaveClass('button', 'button-secondary')
+})
+
+test('avisa al agregar desde el catálogo, renueva el aviso y lo oculta después', async () => {
+  open('/productos')
+  const buttons = await screen.findAllByRole('button', { name: 'Agregar al carrito' })
+  jest.useFakeTimers()
+  try {
+    fireEvent.click(buttons[0])
+    expect(screen.getByText('Audífonos Pro se añadió al carrito')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Carrito: 1 unidad' })).toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(2000))
+    fireEvent.click(buttons[1])
+    expect(screen.getByText('Teclado se añadió al carrito')).toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(2000))
+    expect(screen.getByText('Teclado se añadió al carrito')).toBeInTheDocument()
+    act(() => jest.advanceTimersByTime(1000))
+    expect(screen.queryByText('Teclado se añadió al carrito')).not.toBeInTheDocument()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('avisa también al agregar desde el detalle del producto', async () => {
+  open('/productos/1')
+  fireEvent.click(await screen.findByRole('button', { name: 'Agregar al carrito' }))
+  expect(screen.getByRole('status')).toHaveTextContent('Audífonos Pro se añadió al carrito')
+})
+
+test('no ofrece continuar una compra anterior si el carrito está vacío', async () => {
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+    cart: { items: [] }, checkout: { step: 'checkout' }, transaction: {} }))
+  open('/productos')
+  expect(await screen.findByText('Tercer producto')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Carrito: 0 unidades' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Continuar compra anterior' })).not.toBeInTheDocument()
+})
+
+test('ofrece continuar una compra anterior si hay productos en el carrito', async () => {
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+    cart: { items: [{ productId: 1, name: products[0].name, price: products[0].price,
+      image: null, stock: 10, quantity: 1 }] }, checkout: { step: 'checkout' }, transaction: {} }))
+  open('/productos')
+  expect(await screen.findByText('Tercer producto')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Continuar compra anterior' })).toHaveAttribute('href', '/checkout/1')
+})
+
 test('el indicador no aumenta al superar el stock disponible', async () => {
   jest.mocked(getProducts).mockResolvedValueOnce([{ ...products[0], stock: 2 }, ...products.slice(1)])
   open('/productos')
@@ -158,18 +306,41 @@ test('carrito vacío, agregar dos productos, modificar cantidades, persistir y e
   fireEvent.click(screen.getAllByRole('button', { name: 'Agregar al carrito' })[1])
   fireEvent.click(screen.getByRole('link', { name: 'Carrito: 2 unidades' }))
   expect(await screen.findByRole('heading', { name: 'Carrito' })).toBeInTheDocument()
+  expect(screen.getByText('Verás la tarifa de servicio, el envío y el total antes de confirmar tu pago.')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar Audífonos Pro' }))
   expect(screen.getByText('Cantidad: 2')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Disminuir Audífonos Pro' }))
   expect(screen.getAllByText('Cantidad: 1')).toHaveLength(2)
   expect(createAppStore().getState().cart.items).toHaveLength(2)
   fireEvent.click(screen.getAllByRole('button', { name: 'Eliminar' })[0])
-  expect(screen.getByRole('link', { name: 'Ir al checkout' })).toHaveAttribute('href', '/checkout/2')
-  fireEvent.click(screen.getByRole('link', { name: 'Ir al checkout' }))
+  expect(screen.getByRole('link', { name: 'Continuar compra' })).toHaveAttribute('href', '/checkout/2')
+  fireEvent.click(screen.getByRole('link', { name: 'Continuar compra' }))
   expect(await screen.findByRole('heading', { name: 'Tarjeta y entrega' })).toBeInTheDocument()
   view.unmount()
   expect(createAppStore().getState().cart.items[0].productId).toBe(2)
 })
+
+test('el resumen no presenta una orden pendiente como pago confirmado', async () => {
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+    checkout: { step: 'resumen', clientId: 7 }, transaction: { id: 18, reference: 'ref-test' } }))
+  open('/resumen/1')
+  expect(await screen.findByRole('heading', { name: 'Detalle de la compra' })).toBeInTheDocument()
+  expect(getTransaction).toHaveBeenCalledWith(18)
+  expect(screen.queryByText(/La orden ya existe/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/El pago fue aprobado|El pago fue rechazado/)).not.toBeInTheDocument()
+})
+
+test.each([['APROBADA', 'aprobado'], ['RECHAZADA', 'rechazado']] as const)(
+  'el resumen muestra el resultado cuando la orden está %s', async (status, label) => {
+    localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 3, productId: 1,
+      checkout: { step: 'resumen', clientId: 7 }, transaction: { id: 18, reference: 'ref-test' } }))
+    jest.mocked(getTransaction).mockResolvedValue({ ...record, status })
+    open('/resumen/1')
+    expect(await screen.findByText(`El pago fue ${label}.`)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Consultar estado' })).toHaveAttribute('href', '/resultado/1')
+    expect(screen.queryByText(/La orden ya existe/)).not.toBeInTheDocument()
+  },
+)
 
 test('resumen de carrito usa cotización del backend y crea una orden con todos los productos', async () => {
   const items = products.slice(0, 2).map((product, index) => ({ productId: product.id, name: product.name,
@@ -186,8 +357,8 @@ test('resumen de carrito usa cotización del backend y crea una orden con todos 
   expect(quoteCart).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ productId: 2, quantity: 1 })]))
   fireEvent.click(screen.getByRole('checkbox', { name: /política de privacidad/i }))
   fireEvent.click(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i }))
-  fireEvent.click(screen.getByRole('button', { name: 'Pagar en Sandbox' }))
-  expect(await screen.findByRole('heading', { name: 'Transacción creada - pendiente de pago' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Simular pago' }))
+  expect(await screen.findByRole('heading', { name: 'Compra pendiente de confirmación' })).toBeInTheDocument()
   expect(createCartTransaction).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ productId: 2, quantity: 1 })]), 7, expect.any(String))
   expect(createTransaction).not.toHaveBeenCalled()
   expect(localStorage.getItem('payment-checkout-progress-v1')).not.toMatch(/4242|cvc|tok_test_mock/i)
@@ -204,7 +375,7 @@ test('si el backend cambia el total al crear la orden exige confirmación nueva 
   await screen.findByRole('heading', { name: 'Detalle de la compra' })
   fireEvent.click(screen.getByRole('checkbox', { name: /política de privacidad/i }))
   fireEvent.click(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i }))
-  fireEvent.click(screen.getByRole('button', { name: 'Pagar en Sandbox' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Simular pago' }))
   expect(await screen.findByText(/El importe cambió al crear la orden/)).toBeInTheDocument()
   expect(tokenizeCard).not.toHaveBeenCalled()
   expect(payTransaction).not.toHaveBeenCalled()
@@ -234,7 +405,7 @@ test('refresh de selección recupera producto, cantidad y stock actual del backe
     checkout: { quantity: 2, step: 'producto' }, transaction: {} }))
   jest.mocked(getProduct).mockResolvedValue({ ...products[0], stock: 9 })
   open('/productos/1')
-  expect(await screen.findByText('Stock disponible: 9')).toBeInTheDocument()
+  expect(await screen.findByText('Unidades disponibles: 9')).toBeInTheDocument()
   expect(screen.getByLabelText('Cantidad')).toHaveValue(2)
   expect(screen.getByRole('link', { name: 'Comprar con tarjeta' })).toBeInTheDocument()
   expect(getProduct).toHaveBeenCalledWith(1)
@@ -246,7 +417,7 @@ test('volver al producto con una orden aprobada recuperada permite comprar otra 
   jest.mocked(getTransaction).mockResolvedValue({ ...record, status: 'APROBADA' })
   jest.mocked(getProduct).mockResolvedValue({ ...products[0], stock: 9 })
   open('/productos/1')
-  expect(await screen.findByText('Stock disponible: 9')).toBeInTheDocument()
+  expect(await screen.findByText('Unidades disponibles: 9')).toBeInTheDocument()
   expect(await screen.findByRole('link', { name: 'Comprar con tarjeta' })).toBeInTheDocument()
 })
 
@@ -305,10 +476,10 @@ test('refresh del resumen recupera importe y entrega pero exige nueva aceptació
   expect(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i })).not.toBeChecked()
   fireEvent.click(privacy)
   fireEvent.click(screen.getByRole('checkbox', { name: /tratamiento de datos personales/i }))
-  const confirm = screen.getByRole('button', { name: 'Pagar en Sandbox' })
+  const confirm = screen.getByRole('button', { name: 'Simular pago' })
   await waitFor(() => expect(confirm).toBeEnabled())
   fireEvent.click(confirm)
-  expect(await screen.findByText(/Vuelve al checkout e introduce la tarjeta/i)).toBeInTheDocument()
+  expect(await screen.findByText(/Vuelve a los datos de pago e introduce tu tarjeta/i)).toBeInTheDocument()
   expect(createTransaction).not.toHaveBeenCalled()
   expect(tokenizeCard).not.toHaveBeenCalled()
   expect(payTransaction).not.toHaveBeenCalled()
@@ -324,7 +495,7 @@ test.each(['APROBADA', 'RECHAZADA'] as const)('recupera resultado %s después de
   expect(await screen.findByRole('heading', { name: status === 'APROBADA' ? 'Pago aprobado' : 'Pago rechazado' })).toBeInTheDocument()
   expect(checkPayment).toHaveBeenCalledWith(18, expect.any(String))
   fireEvent.click(screen.getByRole('link', { name: 'Volver al producto' }))
-  expect(await screen.findByText(`Stock disponible: ${status === 'APROBADA' ? 9 : 10}`)).toBeInTheDocument()
+  expect(await screen.findByText(`Unidades disponibles: ${status === 'APROBADA' ? 9 : 10}`)).toBeInTheDocument()
   expect(localStorage.getItem('payment-checkout-progress-v1')).not.toMatch(/4242|cvc|tok_test_mock/i)
 })
 
@@ -336,7 +507,7 @@ test('resultado recupera un error de consulta sin crear un nuevo pago', async ()
   open('/resultado/1')
   expect(await screen.findByRole('button', { name: 'Reintentar consulta' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar consulta' }))
-  expect(await screen.findByRole('heading', { name: 'Transacción creada - pendiente de pago' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Compra pendiente de confirmación' })).toBeInTheDocument()
   expect(payTransaction).not.toHaveBeenCalled()
 })
 

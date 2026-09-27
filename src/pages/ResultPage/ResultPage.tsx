@@ -13,7 +13,7 @@ import { useRouteProduct } from '../../store/useRouteProduct'
 import { formatCurrency } from '../../utils/formatCurrency'
 
 const headings = {
-  PENDIENTE: 'Transacción creada - pendiente de pago',
+  PENDIENTE: 'Compra pendiente de confirmación',
   APROBADA: 'Pago aprobado',
   RECHAZADA: 'Pago rechazado',
 }
@@ -52,15 +52,15 @@ export function ResultPage() {
       <section className="page-section narrow-section">
         <span className="eyebrow">Paso 4 de 4</span>
         <div className="panel result-panel">
-          {transaction.id && (transaction.loading || (verifiedId !== transaction.id && !transaction.error)) ? <p role="status">Verificando transacción en el backend…</p> : record && verifiedId === record.id ? (
+          {transaction.id && (transaction.loading || (verifiedId !== transaction.id && !transaction.error)) ? <p role="status">Consultando el estado de tu pago…</p> : record && verifiedId === record.id ? (
             <>
               <h1>{headings[record.status]}</h1>
               <p>Referencia: {record.reference}</p>
-              <p>Total calculado por el backend: {formatCurrency(record.total)}</p>
+              <p>Total de la compra: {formatCurrency(record.total)}</p>
               {record.items && <OrderSummary product={product} summary={record} names={cart.map((item) => ({
                 id: item.productId, name: item.name, description: '', price: item.price, stock: item.stock, image: item.image,
               }))} />}
-              {record.status === 'PENDIENTE' && <p>El pago puede seguir en proceso. Consultaremos su estado; no se descontará stock ni se creará entrega hasta que se apruebe.</p>}
+              {record.status === 'PENDIENTE' && <p>Tu pago aún está en proceso. Consultaremos su estado y prepararemos tu pedido solo cuando se apruebe.</p>}
             </>
           ) : <h1>Sin resultado de pago</h1>}
           {transaction.error && (
@@ -72,7 +72,7 @@ export function ResultPage() {
               })
             }}>Reintentar consulta</button></div>
           )}
-          {!transaction.id && <p>Todavía no hay una transacción para esta compra.</p>}
+          {!transaction.id && <p>Aún no hay un pago para consultar.</p>}
           <Link className="button" to={`/productos/${product.id}`} onClick={() => {
             clearCard()
             if (record && record.status !== 'PENDIENTE' && verifiedId === record.id) {

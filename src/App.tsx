@@ -16,7 +16,7 @@ function App() {
               <circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" />
             </svg>
             <span>Carrito</span>
-            <span className="cart-count" aria-hidden="true">{unitCount}</span>
+            <span className="cart-count" aria-hidden="true" key={unitCount}>{unitCount}</span>
           </Link>
         </div>
       </header>

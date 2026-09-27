@@ -49,21 +49,21 @@ test('cifra la tarjeta como JWE y la envía solo al backend, nunca el PAN', asyn
 test.each([uat, { ...uat, publicKey: 'pub_test_placeholder' }])('valida la pareja URL/llave del ambiente %#', async (config) => {
   global.fetch = jest.fn()
   const mixed = config.publicKey.startsWith('pub_test_') && config.sandboxUrl.includes('uat')
-  await expect(tokenizeCard(card, config)).rejects.toThrow(mixed ? 'Configuración Sandbox inválida' : 'No se pudo tokenizar')
+  await expect(tokenizeCard(card, config)).rejects.toThrow(mixed ? 'El pago de prueba no está disponible' : 'No pudimos procesar los datos de tu tarjeta')
 })
 
 test('el error del backend se traduce en un ApiError seguro', async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 502, json: async () => ({}) } as Response)
-  await expect(tokenizeCard(card, terms)).rejects.toThrow('No se pudo tokenizar')
+  await expect(tokenizeCard(card, terms)).rejects.toThrow('No pudimos procesar los datos de tu tarjeta')
 })
 
 test('rechaza una respuesta del backend sin token válido', async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { token: 'tok_prod_real' } }) } as Response)
-  await expect(tokenizeCard(card, terms)).rejects.toThrow('No se pudo tokenizar')
+  await expect(tokenizeCard(card, terms)).rejects.toThrow('No pudimos procesar los datos de tu tarjeta')
 })
 
 test('impide tokenizar si configuración apunta fuera de Sandbox', async () => {
-  await expect(tokenizeCard(card, { ...terms, sandboxUrl: 'https://production.wompi.co/v1' })).rejects.toThrow('Sandbox')
+  await expect(tokenizeCard(card, { ...terms, sandboxUrl: 'https://production.wompi.co/v1' })).rejects.toThrow('El pago de prueba no está disponible')
 })
 
 const apiTransaction = { id: 11, referencia: 'ref-11', productoId: 3, clienteId: 18, cantidad: 1,
@@ -82,5 +82,5 @@ test.each([
 
 test('checkPayment rechaza una respuesta que no sea una transacción válida', async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: 11 } }) } as Response)
-  await expect(checkPayment(11, 'key')).rejects.toThrow('El servidor devolvió')
+  await expect(checkPayment(11, 'key')).rejects.toThrow('No pudimos calcular el total de tu compra')
 })

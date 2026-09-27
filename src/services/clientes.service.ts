@@ -8,6 +8,6 @@ export async function createCustomer(customer: Customer): Promise<number> {
       nombre: customer.name.trim(), correo: customer.email.trim(), telefono: customer.phone.trim(),
     }),
   })
-  if (!Number.isSafeInteger(result.id) || result.id < 1) throw new ApiError('El servidor devolvió un cliente inválido.')
+  if (!Number.isSafeInteger(result.id) || result.id < 1) throw new ApiError('No pudimos guardar tus datos. Intenta de nuevo.')
   return result.id
 }
