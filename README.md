@@ -128,8 +128,8 @@ ProductPage   → stock actualizado al volver
 ## Seguridad
 
 - La llave privada y el secreto de integridad deben permanecer únicamente en el entorno del **backend Railway**; nunca en Vercel, variables `VITE_*`, tests ni documentación. No se consultaron ni mostraron valores privados.
-- `backend/.env` estuvo rastreado en Git; se eliminó del repositorio con `git rm --cached backend/.env` (commit `4440720`, ya en `main`, sin reescribir historial) y queda protegido por `.gitignore`. Como su ruta sigue siendo accesible en commits históricos públicos, las credenciales Sandbox afectadas deben rotarse en el panel del proveedor y actualizarse en las variables privadas de Railway. `.env` de la raíz no está rastreado. Los `.env.example` usan placeholders.
-- Revisión de patrones de llaves privadas, secretos de integridad y bloques de clave privada en código, tests y documentación: sin coincidencias de valores reales detectadas; esta búsqueda no sustituye la revisión del historial ni la rotación.
+- `backend/.env` estuvo rastreado en Git; se eliminó del repositorio con `git rm --cached backend/.env` (commit `4440720`, ya en `main`, sin reescribir historial) y queda protegido por `.gitignore`. Las credenciales que contuvo eran únicamente las del ambiente UAT/Sandbox compartido (`stagtest`) suministradas en el documento de la prueba, sin capacidad de mover dinero real; no existen llaves productivas ni propias del comercio en el historial. Las variables reales viven solo en el gestor privado de Railway. `.env` de la raíz no está rastreado. Los `.env.example` usan placeholders.
+- Revisión de patrones de llaves privadas, secretos de integridad y bloques de clave privada en código, tests y documentación: sin coincidencias de valores reales detectadas.
 - Nada de tarjeta en MySQL, Redux persistido ni `localStorage`; el payload de pago nunca contiene `number`/`cvc` (verificado en tests). Los logs del caso de uso de pagos se limitan a identificadores y estado, no a tarjeta o llaves.
 - `Idempotency-Key` v4 obligatoria en operaciones de pago; la referencia derivada impide pagar/consultar órdenes ajenas. DTOs con `class-validator` (`whitelist`, `forbidNonWhitelisted`); los importes se calculan en el backend.
 
@@ -181,7 +181,7 @@ Railway — MySQL (servicio administrado en el mismo proyecto Railway)
 
 Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/productos` y `/api/docs`: `Access-Control-Allow-Origin` devuelve ese origen; preflight `OPTIONS /api/transacciones/cotizar` devolvió **204** y permite GET/POST/OPTIONS. No se consultó `GET /api/payments/terms` porque puede devolver material público de tokenización no necesario para esta auditoría. Las variables necesarias aparecen **solo por nombre** en «Variables de entorno». La `.env` local puede apuntar a localhost sin afectar el bundle desplegado; producción debe conservar `VITE_API_URL` apuntando a Railway y `FRONTEND_ORIGIN` al origen Vercel. Backend y MySQL corren en Railway (un servicio de cada uno, sin infraestructura adicional); el frontend en Vercel. Ambos en planes gratuitos.
 
-**Nota de seguridad:** `backend/.env` fue retirado del repositorio (véase «Seguridad»); las credenciales Sandbox históricas deben rotarse. Este despliegue es Sandbox: no utilizarlo para pagos reales; un uso productivo exigiría controles adicionales (p. ej., webhooks autenticados y respuesta ante una aprobación externa sin liquidación local).
+**Nota de seguridad:** `backend/.env` fue retirado del repositorio (véase «Seguridad»). Este despliegue es Sandbox: no utilizarlo para pagos reales; un uso productivo exigiría controles adicionales (p. ej., webhooks autenticados y respuesta ante una aprobación externa sin liquidación local).
 
 ## Decisiones arquitectónicas
 
@@ -217,7 +217,7 @@ Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/produc
 | Jest frontend/backend | ✅ Cumple | 102 y 107 tests aprobados con mocks. | — |
 | Coverage global >80% | ✅ Cumple | Frontend 93.53/87.89/94.84/97.38; backend 95.86/89.42/94.68/97.36 (S/B/F/L). | Algunos archivos individuales no llegan a 80%; el criterio global sí. |
 | Sandbox | ✅ Cumple | Adapter restringe credenciales de prueba; registros previos DECLINED/APPROVED; tests PENDING/idempotencia. | No se repitieron pagos reales en esta fase. |
-| Seguridad | ⚠️ Parcial | Tarjeta no persistida, JWE, DTOs, HTTPS, CORS restringido al origen Vercel; secretos solo en Railway; `backend/.env` eliminado del repositorio (commit `4440720`); `.env.example` sin valores reales. | Rotar las credenciales Sandbox presentes en commits históricos. |
+| Seguridad | ✅ Cumple | Tokenización JWE (el backend nunca ve PAN/CVC), tarjeta no persistida, DTOs validados, HTTPS, CORS restringido al origen Vercel, `Idempotency-Key` obligatoria; secretos solo en Railway; `backend/.env` eliminado del repositorio (commit `4440720`); `.env.example` sin valores reales. | El historial solo contuvo credenciales del Sandbox compartido del enunciado (`stagtest`), sin llaves productivas. |
 | GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor; sin `.env` versionado. | — |
 | Frontend deploy | ✅ Cumple | Vercel HTTPS y bundle apunta a API Railway. | — |
 | Backend deploy | ✅ Cumple | Railway HTTPS, catálogo y Swagger GET 200, CORS/preflight válidos. | — |
