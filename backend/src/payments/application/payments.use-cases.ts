@@ -1,9 +1,20 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { HttpException, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createHash } from 'node:crypto'
+import { AppError, unexpected } from '../../common/result/app-error'
+import { Result, andThenAsync, err, fromPromise, isErr, map, ok } from '../../common/result/result'
+import { Transaccion } from '../../transacciones/domain/transaccion'
+import { PayDto } from '../dto/pay.dto'
 import { PaymentGatewayPort, ProviderPayment } from '../ports/payment-gateway.port'
 import { PaymentOrdersPort } from '../ports/payment-orders.port'
-import { PayDto } from '../dto/pay.dto'
+
+type Order = NonNullable<Awaited<ReturnType<PaymentOrdersPort['get']>>>
+
+function providerError(cause: unknown): AppError {
+  return cause instanceof HttpException
+    ? { kind: 'PaymentProviderError', message: cause.message, httpStatus: cause.getStatus() }
+    : { kind: 'PaymentProviderError', message: 'Error interno del servidor', httpStatus: 500 }
+}
 
 @Injectable()
 export class PaymentsUseCases {
@@ -12,78 +23,87 @@ export class PaymentsUseCases {
     private readonly config: ConfigService) {}
 
   async terms() {
-    const [{ privacy, personal }, tokenizationKey] = await Promise.all([
-      this.gateway.terms(), this.gateway.tokenizationKey(),
-    ])
-    return { privacy, personal, tokenizationKey, publicKey: this.config.getOrThrow<string>('WOMPI_PUBLIC_KEY'),
-      sandboxUrl: this.config.getOrThrow<string>('WOMPI_SANDBOX_URL') }
+    const documents = await fromPromise(() => Promise.all([this.gateway.terms(), this.gateway.tokenizationKey()]), providerError)
+    return andThenAsync(documents, async ([{ privacy, personal }, tokenizationKey]) => fromPromise(async () => ({
+      privacy, personal, tokenizationKey, publicKey: this.config.getOrThrow<string>('WOMPI_PUBLIC_KEY'),
+      sandboxUrl: this.config.getOrThrow<string>('WOMPI_SANDBOX_URL'),
+    }), unexpected))
   }
 
   async tokenize(payload: string) {
-    return { token: await this.gateway.tokenizeCard(payload) }
+    return map(await fromPromise(() => this.gateway.tokenizeCard(payload), providerError), (token) => ({ token }))
   }
 
-  private async order(id: number, key: string) {
+  private async order(id: number, key: string): Promise<Result<Order, AppError>> {
     if (!key || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) {
-      throw new BadRequestException('Idempotency-Key inválida')
+      return err({ kind: 'Validation', message: 'Idempotency-Key inválida' })
     }
-    const order = await this.orders.get(id)
-    if (!order) throw new NotFoundException('Transacción no encontrada')
-    if (order.referencia !== createHash('sha256').update(`checkout:${key}`).digest('hex')) {
-      throw new NotFoundException('Transacción no encontrada')
+    const found = await fromPromise(() => this.orders.get(id), unexpected)
+    if (isErr(found)) return found
+    if (!found.value || found.value.referencia !== createHash('sha256').update(`checkout:${key}`).digest('hex')) {
+      return err({ kind: 'NotFound', message: 'Transacción no encontrada' })
     }
-    return order
+    return ok(found.value)
   }
 
-  private async synchronize(id: number, reference: string, amountInCents: number, external: ProviderPayment) {
+  private async synchronize(id: number, reference: string, amountInCents: number,
+    external: ProviderPayment): Promise<Result<Transaccion, AppError>> {
     if (external.reference !== reference || external.amountInCents !== amountInCents || external.currency !== 'COP') {
-      throw new ConflictException('Respuesta de pago no coincide con la orden; requiere conciliación')
+      return err({ kind: 'Conflict', message: 'Respuesta de pago no coincide con la orden; requiere conciliación' })
     }
     this.logger.log(`transactionId=${id} reference=${reference} externalTransactionId=${external.id} status=${external.status}`)
-    if (external.status === 'PENDING') {
-      const order = await this.orders.get(id)
-      if (!order) throw new NotFoundException('Transacción no encontrada')
-      const { email: _email, ...safe } = order
+    const status = external.status
+    if (status === 'PENDING') {
+      const found = await fromPromise(() => this.orders.get(id), unexpected)
+      if (isErr(found)) return found
+      if (!found.value) return err({ kind: 'NotFound', message: 'Transacción no encontrada' })
+      const { email: _email, ...safe } = found.value
       void _email
-      return safe
+      return ok(safe)
     }
-    return this.orders.settle(id, external.status)
+    return fromPromise(() => this.orders.settle(id, status), unexpected)
   }
 
-  async pay(id: number, key: string, input: PayDto) {
-    const order = await this.order(id, key)
-    if (order.estado !== 'PENDIENTE' || order.idTransaccionExterna) return this.check(id, key)
-    const terms = await this.gateway.terms()
-    if (terms.privacy !== input.privacyDocument || terms.personal !== input.personalDocument) {
-      throw new ConflictException('Los documentos de aceptación han cambiado; revísalos nuevamente')
-    }
-    const reserved = await this.orders.reserve(id, {
-      address: input.address, city: input.city, department: input.department, postalCode: input.postalCode,
+  async pay(id: number, key: string, input: PayDto): Promise<Result<Transaccion, AppError>> {
+    return andThenAsync(await this.order(id, key), async (order) => {
+      if (order.estado !== 'PENDIENTE' || order.idTransaccionExterna) return this.check(id, key)
+      return andThenAsync(await fromPromise(() => this.gateway.terms(), providerError), async (terms) => {
+        if (terms.privacy !== input.privacyDocument || terms.personal !== input.personalDocument) {
+          return err<AppError>({ kind: 'Conflict', message: 'Los documentos de aceptación han cambiado; revísalos nuevamente' })
+        }
+        const reserved = await fromPromise(() => this.orders.reserve(id, {
+          address: input.address, city: input.city, department: input.department, postalCode: input.postalCode,
+        }), unexpected)
+        return andThenAsync(reserved, async (didReserve): Promise<Result<Transaccion, AppError>> => {
+          if (!didReserve) return this.check(id, key)
+          const amountInCents = Math.round(Number(order.total) * 100)
+          const payment = await fromPromise(() => this.gateway.create({ reference: order.referencia, amountInCents,
+            email: order.email, cardToken: input.cardToken, installments: input.installments, terms }), providerError)
+          return andThenAsync(payment, async (external): Promise<Result<Transaccion, AppError>> => {
+            if (external.reference !== order.referencia || external.amountInCents !== amountInCents || external.currency !== 'COP') {
+              return err({ kind: 'Conflict', message: 'Respuesta de pago no coincide con la orden; requiere conciliación' })
+            }
+            const attached = await fromPromise(() => this.orders.attachExternal(id, external.id), unexpected)
+            return andThenAsync(attached, async () => this.synchronize(id, order.referencia, amountInCents, external))
+          })
+        })
+      })
     })
-    if (!reserved) return this.check(id, key)
-    const amountInCents = Math.round(Number(order.total) * 100)
-    const external = await this.gateway.create({ reference: order.referencia, amountInCents,
-      email: order.email, cardToken: input.cardToken, installments: input.installments, terms })
-    if (external.reference !== order.referencia || external.amountInCents !== amountInCents || external.currency !== 'COP') {
-      throw new ConflictException('Respuesta de pago no coincide con la orden; requiere conciliación')
-    }
-    await this.orders.attachExternal(id, external.id)
-    const result = await this.synchronize(id, order.referencia, amountInCents, external)
-    if (!result) throw new NotFoundException('Transacción no encontrada')
-    return result
   }
 
-  async check(id: number, key: string) {
-    const order = await this.order(id, key)
-    if (order.estado !== 'PENDIENTE' || !order.idTransaccionExterna) {
-      const { email: _email, ...safe } = order
-      void _email
-      return safe
-    }
-    const external = await this.gateway.get(order.idTransaccionExterna)
-    if (external.id !== order.idTransaccionExterna) throw new ConflictException('Identificador externo no coincide')
-    const result = await this.synchronize(id, order.referencia, Math.round(Number(order.total) * 100), external)
-    if (!result) throw new NotFoundException('Transacción no encontrada')
-    return result
+  async check(id: number, key: string): Promise<Result<Transaccion, AppError>> {
+    return andThenAsync(await this.order(id, key), async (order) => {
+      const externalId = order.idTransaccionExterna
+      if (order.estado !== 'PENDIENTE' || !externalId) {
+        const { email: _email, ...safe } = order
+        void _email
+        return ok(safe)
+      }
+      const payment = await fromPromise(() => this.gateway.get(externalId), providerError)
+      return andThenAsync(payment, async (external): Promise<Result<Transaccion, AppError>> => {
+        if (external.id !== externalId) return err({ kind: 'Conflict', message: 'Identificador externo no coincide' })
+        return this.synchronize(id, order.referencia, Math.round(Number(order.total) * 100), external)
+      })
+    })
   }
 }

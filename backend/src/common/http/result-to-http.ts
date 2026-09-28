@@ -11,7 +11,8 @@ function toException(error: AppError): HttpException {
     case 'StockInsuficiente': return new ConflictException(error.message)
     case 'Validation': return new BadRequestException(error.message)
     case 'PaymentDeclined': return new HttpException(error.message, HttpStatus.PAYMENT_REQUIRED)
-    case 'PaymentProviderError': return new BadGatewayException(error.message)
+    case 'PaymentProviderError': return error.httpStatus && error.httpStatus !== HttpStatus.BAD_GATEWAY
+      ? new HttpException(error.message, error.httpStatus) : new BadGatewayException(error.message)
     case 'Unexpected': {
       if (error.cause instanceof HttpException) return error.cause
       if (error.cause instanceof Prisma.PrismaClientKnownRequestError) {

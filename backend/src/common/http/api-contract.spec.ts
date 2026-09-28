@@ -17,6 +17,8 @@ import { ApiExceptionFilter } from './api-exception.filter'
 describe('Contratos HTTP sin escritura en MySQL', () => {
   let app: NestFastifyApplication
   const createExecute = jest.fn().mockResolvedValue(ok({ id: 3, estado: 'PENDIENTE' }))
+  const payExecute = jest.fn().mockResolvedValue(ok({ id: 3, estado: 'RECHAZADA' }))
+  const checkExecute = jest.fn().mockResolvedValue(ok({ id: 3, estado: 'PENDIENTE' }))
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -29,8 +31,8 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
         { provide: CrearTransaccion, useValue: { execute: createExecute } },
         { provide: ObtenerTransaccion, useValue: { execute: async () => ok({ id: 3, estado: 'PENDIENTE' }) } },
         { provide: CrearEntrega, useValue: { execute: async () => ok({ id: 4, estado: 'PENDIENTE' }) } },
-        { provide: PaymentsUseCases, useValue: { terms: async () => ({ privacy: 'https://e.test/p' }),
-          tokenize: async () => ({ token: 'tok_test_mock' }), pay: jest.fn(), check: jest.fn() } },
+        { provide: PaymentsUseCases, useValue: { terms: async () => ok({ privacy: 'https://e.test/p' }),
+          tokenize: async () => ok({ token: 'tok_test_mock' }), pay: payExecute, check: checkExecute } },
       ],
     }).compile()
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter())
@@ -144,6 +146,27 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
     expect(okResponse.json()).toEqual({ data: { token: 'tok_test_mock' } })
     expect(bad.statusCode).toBe(400)
     expect(card.statusCode).toBe(400)
+  })
+
+  it('mantiene pago rechazado como resultado 201 y consulta pendiente como 200', async () => {
+    const key = 'ef3b98af-a0c7-410b-bf32-3f126709aed1'
+    const payment = await app.inject({ method: 'POST', url: '/api/payments/3', headers: { 'Idempotency-Key': key },
+      payload: { cardToken: 'tok_test_mock', installments: 1, acceptPrivacy: true, acceptPersonal: true,
+        privacyDocument: 'https://example.test/privacy', personalDocument: 'https://example.test/personal',
+        address: 'Calle 1', city: 'Bogotá', department: 'Cundinamarca' } })
+    const check = await app.inject({ method: 'GET', url: '/api/payments/3', headers: { 'Idempotency-Key': key } })
+    expect(payment.statusCode).toBe(201)
+    expect(payment.json()).toEqual({ data: { id: 3, estado: 'RECHAZADA' } })
+    expect(check.statusCode).toBe(200)
+    expect(check.json()).toEqual({ data: { id: 3, estado: 'PENDIENTE' } })
+  })
+
+  it('mantiene un fallo del proveedor con HTTP 502 y el mismo formato', async () => {
+    checkExecute.mockResolvedValueOnce(err({ kind: 'PaymentProviderError', message: 'Proveedor no disponible' }))
+    const response = await app.inject({ method: 'GET', url: '/api/payments/3',
+      headers: { 'Idempotency-Key': 'ef3b98af-a0c7-410b-bf32-3f126709aed1' } })
+    expect(response.statusCode).toBe(502)
+    expect(response.json()).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Proveedor no disponible' } })
   })
 
   it('rechaza una entrega con cuerpo incompleto', async () => {
