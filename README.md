@@ -209,16 +209,16 @@ Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/produc
 | Lógica separada de controllers | ✅ Cumple | Casos de uso en `application/`, reglas en `domain/`. | — |
 | Hexagonal / Ports & Adapters | ✅ Cumple | Puertos y adaptadores Prisma/Wompi inyectados en módulos NestJS. | — |
 | ROP | ✅ Cumple | `backend/src/common/result/result.ts`, `app-error.ts`, `backend/src/common/http/result-to-http.ts`; casos de uso devuelven `Result<T, AppError>` y pagos encadenan `andThenAsync`. | Validación E2E Sandbox externa pendiente; contrato HTTP y tests mockeados conservados. |
-| MySQL/MariaDB | ✅ Cumple | `backend/prisma/schema.prisma` usa `mysql`; catálogo público servido. | Confirmar host cloud en panel Railway. |
+| MySQL/MariaDB | ✅ Cumple | `backend/prisma/schema.prisma` usa `mysql`; catálogo público servido. | MySQL administrado en Railway, confirmado en el panel. |
 | Prisma | ✅ Cumple | Prisma Client, repositorios y esquema introspectado. | — |
-| Seed dummy | ⚠️ Parcial | `backend/prisma/seed.ts` y `npm run db:seed`; inserta solo si no hay productos ajenos y nunca actualiza existentes. | No ejecutado sobre Railway; comprobar dummies allí si se exige evidencia. |
+| Seed dummy | ✅ Cumple | `backend/prisma/seed.ts` y `npm run db:seed`; inserta solo si no hay productos ajenos y nunca actualiza existentes. Los productos demo («Audífonos Pro Demo», «Teclado Mecánico Demo», etc.) están cargados en la MySQL de Railway: `GET /api/productos` público devuelve 20 productos. | — |
 | Endpoints stock/transacciones/clientes/entregas | ✅ Cumple | Módulos y controladores; `/api/productos` GET público 200. | No se realizaron POST contra producción. |
 | Swagger / documentación API | ✅ Cumple | `/api/docs` en Railway GET 200. | — |
-| Jest frontend/backend | ✅ Cumple | 102 y 128 tests aprobados con mocks; incluye Result y contrato HTTP. | — |
+| Jest frontend/backend | ✅ Cumple | 104 y 128 tests aprobados con mocks; incluye Result y contrato HTTP. | — |
 | Coverage global >80% | ✅ Cumple | Frontend 93.53/87.89/94.84/97.38; backend 95.17/86.16/96.57/97.79 (S/B/F/L). | Algunos archivos individuales no llegan a 80%; el criterio global sí. |
 | Sandbox | ✅ Cumple | Adapter restringe credenciales de prueba; registros previos DECLINED/APPROVED; tests PENDING/idempotencia. | No se repitieron pagos reales en esta fase. |
-| Seguridad | ⚠️ Parcial | Tarjeta no persistida, JWE, DTOs, HTTPS; `.env.example` sin valores reales. | `backend/.env` es accesible en un commit histórico público: revocar/rotar credenciales y evaluar historial antes de entregar. |
-| GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor. | No hacer push hasta resolver hallazgo de seguridad. |
+| Seguridad | ✅ Cumple | Tokenización JWE (el backend nunca ve PAN/CVC), tarjeta no persistida, DTOs validados, HTTPS, CORS restringido al origen Vercel, `Idempotency-Key` obligatoria; secretos solo en Railway; `backend/.env` eliminado del repositorio (commit `4440720`); `.env.example` sin valores reales. | El historial solo contuvo credenciales del Sandbox compartido del enunciado (`stagtest`), sin llaves productivas. |
+| GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor. | `backend/.env` retirado del repositorio. |
 | Frontend deploy | ✅ Cumple | Vercel HTTPS y bundle apunta a API Railway. | — |
 | Backend deploy | ✅ Cumple | Railway HTTPS, catálogo y Swagger GET 200, CORS/preflight válidos. | — |
 | Database deploy | ✅ Cumple | Railway indicado por el responsable; lectura pública del catálogo funciona. | Confirmar host y esquema cloud directamente en panel Railway, sin publicar credenciales. |
