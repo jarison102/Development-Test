@@ -499,6 +499,18 @@ test.each(['APROBADA', 'RECHAZADA'] as const)('recupera resultado %s después de
   expect(localStorage.getItem('payment-checkout-progress-v1')).not.toMatch(/4242|cvc|tok_test_mock/i)
 })
 
+test.each(['APROBADA', 'RECHAZADA'] as const)('muestra resultado %s de carrito aunque la ruta use otro producto de la orden', async (status) => {
+  localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 2, productId: 2,
+    checkout: { idempotencyKey: 'ef3b98af-a0c7-410b-bf32-3f126709aed1' },
+    transaction: { id: 18, reference: 'ref-test' } }))
+  jest.mocked(checkPayment).mockResolvedValue({ ...record, status, items: [
+    { productId: 1, quantity: 1, unitPrice: '250000.00', subtotal: '250000.00' },
+    { productId: 2, quantity: 1, unitPrice: '320000.00', subtotal: '320000.00' }] })
+  open('/resultado/2')
+  expect(await screen.findByRole('heading', { name: status === 'APROBADA' ? 'Pago aprobado' : 'Pago rechazado' })).toBeInTheDocument()
+  expect(screen.getByText('Referencia: ref-test')).toBeInTheDocument()
+})
+
 test('resultado recupera un error de consulta sin crear un nuevo pago', async () => {
   localStorage.setItem('payment-checkout-progress-v1', JSON.stringify({ version: 2, productId: 1,
     checkout: { idempotencyKey: 'ef3b98af-a0c7-410b-bf32-3f126709aed1' },

@@ -45,7 +45,8 @@ export function ResultPage() {
   if (!product) return <ProductUnavailable />
   if (!ready) return <p role="status">Preparando resultado…</p>
 
-  const record = transaction.record?.productId === product.id ? transaction.record : null
+  const record = transaction.record && (transaction.record.productId === product.id
+    || transaction.record.items?.some((item) => item.productId === product.id)) ? transaction.record : null
   return (
     <>
       <CheckoutSteps current="resultado" />
