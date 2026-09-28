@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { createHash, randomUUID } from 'node:crypto'
 import { ClientesPort } from '../../clientes/domain/clientes.port'
 import { AppError, unexpected } from '../../common/result/app-error'
-import { Result, andThenAsync, combine, err, fromPromise, isErr, ok } from '../../common/result/result'
+import { Result, andThenAsync, combine, err, fromPromise, isErr, map, ok } from '../../common/result/result'
 import { ProductosPort } from '../../productos/domain/productos.port'
 import { CotizarTransaccionDto } from '../dto/cotizar-transaccion.dto'
 import { CrearTransaccionDto } from '../dto/crear-transaccion.dto'
@@ -33,14 +33,13 @@ async function cotizar(productos: ProductosPort, data: CotizarTransaccionDto): P
   const combined = combine(products)
   if (isErr(combined)) return combined
   const items = combined.value
-  return fromPromise(async (): Promise<Quote> => {
-    if (!data.items) return { productoId: items[0].productoId, cantidad: items[0].cantidad,
-      ...calcularImportes(items[0].precioUnitario, items[0].cantidad) }
-    const ordered = items.sort((a, b) => a.productoId - b.productoId)
-    const { subtotals, ...amounts } = calcularImportesItems(ordered.map((item) => ({ precio: item.precioUnitario, cantidad: item.cantidad })))
-    return { productoId: ordered[0].productoId, cantidad: ordered[0].cantidad,
-      items: ordered.map((item, index) => ({ ...item, subtotal: subtotals[index] })), ...amounts }
-  }, (): AppError => ({ kind: 'Conflict', message: 'No se puede calcular el importe de esta compra' }))
+  if (!data.items) return map(calcularImportes(items[0].precioUnitario, items[0].cantidad), (amounts): Quote => ({
+    productoId: items[0].productoId, cantidad: items[0].cantidad, ...amounts,
+  }))
+  const ordered = items.sort((a, b) => a.productoId - b.productoId)
+  return map(calcularImportesItems(ordered.map((item) => ({ precio: item.precioUnitario, cantidad: item.cantidad }))),
+    ({ subtotals, ...amounts }): Quote => ({ productoId: ordered[0].productoId, cantidad: ordered[0].cantidad,
+      items: ordered.map((item, index) => ({ ...item, subtotal: subtotals[index] })), ...amounts }))
 }
 
 @Injectable()
