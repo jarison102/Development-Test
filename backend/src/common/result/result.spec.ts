@@ -1,4 +1,4 @@
-import { all, andThen, andThenAsync, combine, err, isErr, isOk, map, mapErr, match, ok } from './result'
+import { all, andThen, andThenAsync, combine, err, fromPromise, isErr, isOk, map, mapErr, match, ok } from './result'
 
 describe('Result', () => {
   it('distingue éxito y error sin perder tipos', () => {
@@ -29,6 +29,11 @@ describe('Result', () => {
   it('combine y all agrupan éxitos o devuelven el primer error', () => {
     expect(combine([ok(1), ok(2)])).toEqual(ok([1, 2]))
     expect(all([ok(1), err('falló'), err('otro')])).toEqual(err('falló'))
+  })
+
+  it('fromPromise convierte fallos del adaptador en valores de error', async () => {
+    expect(await fromPromise(async () => 2, () => 'error')).toEqual(ok(2))
+    expect(await fromPromise(async () => { throw new Error('falló') }, () => 'error')).toEqual(err('error'))
   })
 
   it('match resuelve ambas ramas', () => {

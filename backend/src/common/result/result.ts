@@ -37,3 +37,8 @@ export function combine<T, E>(results: readonly Result<T, E>[]): Result<T[], E> 
 }
 
 export const all = combine
+
+export async function fromPromise<T, E>(operation: () => Promise<T>, onError: (cause: unknown) => E): Promise<Result<T, E>> {
+  try { return ok(await operation()) }
+  catch (cause) { return err(onError(cause)) }
+}

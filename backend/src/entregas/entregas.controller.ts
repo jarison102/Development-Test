@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { toHttp } from '../common/http/result-to-http'
 import { CrearEntrega } from './application/crear-entrega.use-case'
 import { CrearEntregaDto } from './dto/crear-entrega.dto'
 
@@ -15,6 +16,6 @@ export class EntregasController {
   @ApiResponse({ status: 404, description: 'Cliente o transacción inexistente' })
   @ApiResponse({ status: 409, description: 'Transacción no aprobada, cliente ajeno o entrega duplicada' })
   async create(@Body() body: CrearEntregaDto) {
-    return { data: await this.crear.execute(body) }
+    return toHttp(await this.crear.execute(body))
   }
 }

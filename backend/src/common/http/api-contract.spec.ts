@@ -11,23 +11,24 @@ import { ListarProductos, ObtenerProducto } from '../../productos/application/pr
 import { ProductosController } from '../../productos/productos.controller'
 import { CotizarTransaccion, CrearTransaccion, ObtenerTransaccion } from '../../transacciones/application/transacciones.use-cases'
 import { TransaccionesController } from '../../transacciones/transacciones.controller'
+import { err, ok } from '../result/result'
 import { ApiExceptionFilter } from './api-exception.filter'
 
 describe('Contratos HTTP sin escritura en MySQL', () => {
   let app: NestFastifyApplication
-  const createExecute = jest.fn().mockResolvedValue({ id: 3, estado: 'PENDIENTE' })
+  const createExecute = jest.fn().mockResolvedValue(ok({ id: 3, estado: 'PENDIENTE' }))
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [ProductosController, ClientesController, TransaccionesController, EntregasController, PaymentsController],
       providers: [
-        { provide: ListarProductos, useValue: { execute: async () => [{ id: 1, nombre: 'Producto' }] } },
-        { provide: ObtenerProducto, useValue: { execute: async () => ({ id: 1, nombre: 'Producto' }) } },
-        { provide: CrearCliente, useValue: { execute: async () => ({ id: 2, nombre: 'Cliente' }) } },
-        { provide: CotizarTransaccion, useValue: { execute: async () => ({ productoId: 1, cantidad: 1, subtotal: '250000.00', tarifaBase: '1500.00', tarifaEnvio: '5000.00', total: '256500.00' }) } },
+        { provide: ListarProductos, useValue: { execute: async () => ok([{ id: 1, nombre: 'Producto' }]) } },
+        { provide: ObtenerProducto, useValue: { execute: async () => ok({ id: 1, nombre: 'Producto' }) } },
+        { provide: CrearCliente, useValue: { execute: async () => ok({ id: 2, nombre: 'Cliente' }) } },
+        { provide: CotizarTransaccion, useValue: { execute: async () => ok({ productoId: 1, cantidad: 1, subtotal: '250000.00', tarifaBase: '1500.00', tarifaEnvio: '5000.00', total: '256500.00' }) } },
         { provide: CrearTransaccion, useValue: { execute: createExecute } },
-        { provide: ObtenerTransaccion, useValue: { execute: async () => ({ id: 3, estado: 'PENDIENTE' }) } },
-        { provide: CrearEntrega, useValue: { execute: async () => ({ id: 4, estado: 'PENDIENTE' }) } },
+        { provide: ObtenerTransaccion, useValue: { execute: async () => ok({ id: 3, estado: 'PENDIENTE' }) } },
+        { provide: CrearEntrega, useValue: { execute: async () => ok({ id: 4, estado: 'PENDIENTE' }) } },
         { provide: PaymentsUseCases, useValue: { terms: async () => ({ privacy: 'https://e.test/p' }),
           tokenize: async () => ({ token: 'tok_test_mock' }), pay: jest.fn(), check: jest.fn() } },
       ],
@@ -85,6 +86,14 @@ describe('Contratos HTTP sin escritura en MySQL', () => {
     expect(response.statusCode).toBe(201)
     expect(response.json()).toEqual({ data: { id: 3, estado: 'PENDIENTE' } })
     expect(createExecute).toHaveBeenCalledWith(expect.objectContaining({ productoId: 1, clienteId: 2, cantidad: 1 }), key)
+  })
+
+  it('conserva el código, mensaje y formato HTTP ante un Result de stock insuficiente', async () => {
+    createExecute.mockResolvedValueOnce(err({ kind: 'StockInsuficiente', message: 'Stock insuficiente' }))
+    const response = await app.inject({ method: 'POST', url: '/api/transacciones',
+      payload: { productoId: 1, clienteId: 2, cantidad: 1 } })
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toEqual({ error: { code: 'CONFLICT', message: 'Stock insuficiente' } })
   })
 
   it('acepta un carrito sin importes y rechaza precios o stock del navegador', async () => {

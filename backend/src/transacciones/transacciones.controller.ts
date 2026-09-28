@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, Post } from '@nestjs/common'
 import { ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { IdParamDto } from '../common/http/id-param.dto'
+import { toHttp } from '../common/http/result-to-http'
 import { CotizarTransaccion, CrearTransaccion, ObtenerTransaccion } from './application/transacciones.use-cases'
 import { CotizarTransaccionDto } from './dto/cotizar-transaccion.dto'
 import { CrearTransaccionDto } from './dto/crear-transaccion.dto'
@@ -22,7 +23,7 @@ export class TransaccionesController {
   @ApiResponse({ status: 404, description: 'Producto inexistente' })
   @ApiResponse({ status: 409, description: 'Stock insuficiente' })
   async quote(@Body() body: CotizarTransaccionDto) {
-    return { data: await this.cotizar.execute(body) }
+    return toHttp(await this.cotizar.execute(body))
   }
 
   @Post()
@@ -33,7 +34,7 @@ export class TransaccionesController {
   @ApiResponse({ status: 404, description: 'Producto o cliente inexistente' })
   @ApiResponse({ status: 409, description: 'Stock insuficiente o importe fuera de rango' })
   async create(@Body() body: CrearTransaccionDto, @Headers('idempotency-key') key?: string) {
-    return { data: await this.crear.execute(body, key) }
+    return toHttp(await this.crear.execute(body, key))
   }
 
   @Get(':id')
@@ -43,6 +44,6 @@ export class TransaccionesController {
   @ApiResponse({ status: 400, description: 'ID inválido' })
   @ApiResponse({ status: 404, description: 'Transacción inexistente' })
   async findOne(@Param() params: IdParamDto) {
-    return { data: await this.obtener.execute(params.id) }
+    return toHttp(await this.obtener.execute(params.id))
   }
 }

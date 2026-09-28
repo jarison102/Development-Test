@@ -1,3 +1,4 @@
+import { isErr } from '../../common/result/result'
 import { ClientesPort } from '../domain/clientes.port'
 import { CrearCliente } from './crear-cliente.use-case'
 
@@ -11,16 +12,18 @@ describe('CrearCliente', () => {
   it('normaliza espacios y correo antes de registrar', async () => {
     const { useCase, crear } = setup()
     const cliente = await useCase.execute({ nombre: '  Ana  ', correo: '  ANA@EXAMPLE.TEST ', telefono: ' 300 ' })
-    expect(cliente.id).toBe(2)
+    expect(cliente).toMatchObject({ ok: true, value: { id: 2 } })
     expect(crear).toHaveBeenCalledWith({ nombre: 'Ana', correo: 'ana@example.test', telefono: '300' })
   })
 
   it.each([
     ['nombre', { nombre: '   ', correo: 'ana@example.test', telefono: '300' }],
     ['teléfono', { nombre: 'Ana', correo: 'ana@example.test', telefono: '  ' }],
-  ])('rechaza un %s vacío sin llamar al repositorio', (_campo, data) => {
+  ])('rechaza un %s vacío sin llamar al repositorio', async (_campo, data) => {
     const { useCase, crear } = setup()
-    expect(() => useCase.execute(data)).toThrow('Nombre y teléfono son obligatorios')
+    const result = await useCase.execute(data)
+    expect(isErr(result)).toBe(true)
+    expect(result).toMatchObject({ error: { kind: 'Validation', message: 'Nombre y teléfono son obligatorios' } })
     expect(crear).not.toHaveBeenCalled()
   })
 })

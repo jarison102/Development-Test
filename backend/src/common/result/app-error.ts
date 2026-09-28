@@ -6,3 +6,5 @@ export type AppError =
   | { kind: 'PaymentDeclined'; message: string }
   | { kind: 'PaymentProviderError'; message: string }
   | { kind: 'Unexpected'; message: string; cause?: unknown }
+
+export const unexpected = (cause: unknown): AppError => ({ kind: 'Unexpected', message: 'Error interno del servidor', cause })

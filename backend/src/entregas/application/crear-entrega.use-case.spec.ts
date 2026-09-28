@@ -1,4 +1,6 @@
 import { ClientesPort } from '../../clientes/domain/clientes.port'
+import { AppError } from '../../common/result/app-error'
+import { Result, isErr } from '../../common/result/result'
 import { TransaccionesPort } from '../../transacciones/domain/transacciones.port'
 import { EntregasPort } from '../domain/entregas.port'
 import { CrearEntrega } from './crear-entrega.use-case'
@@ -20,39 +22,45 @@ function setup() {
   return { useCase: new CrearEntrega(transacciones, clientes, entregas), buscarTransaccion, buscarEntrega, crear }
 }
 
+async function expectFailure(result: Promise<Result<unknown, AppError>>, kind: AppError['kind']) {
+  const value = await result
+  expect(isErr(value)).toBe(true)
+  expect(value).toMatchObject({ error: { kind } })
+}
+
 describe('CrearEntrega', () => {
   it('crea una entrega pendiente para una transacción aprobada', async () => {
     const { useCase, crear } = setup()
     const result = await useCase.execute(input)
-    expect(result.estado).toBe('PENDIENTE')
+    expect(result).toMatchObject({ ok: true, value: { estado: 'PENDIENTE' } })
     expect(crear).toHaveBeenCalledWith(expect.objectContaining({ transaccionId: 4, clienteId: 2 }))
   })
 
   it('no crea entrega antes de la aprobación', async () => {
     const { useCase, buscarTransaccion, crear } = setup()
     buscarTransaccion.mockResolvedValue({ ...transaccion, estado: 'RECHAZADA' })
-    await expect(useCase.execute(input)).rejects.toMatchObject({ status: 409 })
+    await expectFailure(useCase.execute(input), 'Conflict')
     expect(crear).not.toHaveBeenCalled()
   })
 
   it('rechaza cliente ajeno a la transacción', async () => {
     const { useCase, buscarTransaccion, crear } = setup()
     buscarTransaccion.mockResolvedValue({ ...transaccion, clienteId: 3 })
-    await expect(useCase.execute(input)).rejects.toMatchObject({ status: 409 })
+    await expectFailure(useCase.execute(input), 'Conflict')
     expect(crear).not.toHaveBeenCalled()
   })
 
   it('rechaza una segunda entrega', async () => {
     const { useCase, buscarEntrega, crear } = setup()
     buscarEntrega.mockResolvedValue({ id: 5 })
-    await expect(useCase.execute(input)).rejects.toMatchObject({ status: 409 })
+    await expectFailure(useCase.execute(input), 'Conflict')
     expect(crear).not.toHaveBeenCalled()
   })
 
   it('responde 404 si la transacción o el cliente no existen', async () => {
     const { useCase, buscarTransaccion, crear } = setup()
     buscarTransaccion.mockResolvedValue(null)
-    await expect(useCase.execute(input)).rejects.toMatchObject({ status: 404 })
+    await expectFailure(useCase.execute(input), 'NotFound')
     expect(crear).not.toHaveBeenCalled()
   })
 
@@ -63,19 +71,19 @@ describe('CrearEntrega', () => {
     const clientes: ClientesPort = { buscar: jest.fn().mockResolvedValue(null), crear: jest.fn() }
     const entregas: EntregasPort = { buscarPorTransaccion: jest.fn().mockResolvedValue(null), crearSiAprobadaYUnica: crear }
     const caso = new CrearEntrega(transacciones, clientes, entregas)
-    await expect(caso.execute(input)).rejects.toMatchObject({ status: 404 })
+    await expectFailure(caso.execute(input), 'NotFound')
     expect(crear).not.toHaveBeenCalled()
   })
 
   it.each(['direccion', 'ciudad', 'departamento'] as const)('exige %s no vacía', async (campo) => {
     const { useCase, crear } = setup()
-    await expect(useCase.execute({ ...input, [campo]: '   ' })).rejects.toMatchObject({ status: 400 })
+    await expectFailure(useCase.execute({ ...input, [campo]: '   ' }), 'Validation')
     expect(crear).not.toHaveBeenCalled()
   })
 
   it('informa conflicto cuando la creación atómica devuelve null', async () => {
     const { useCase, crear } = setup()
     crear.mockResolvedValue(null)
-    await expect(useCase.execute(input)).rejects.toMatchObject({ status: 409 })
+    await expectFailure(useCase.execute(input), 'Conflict')
   })
 })
