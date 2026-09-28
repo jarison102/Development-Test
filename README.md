@@ -16,7 +16,7 @@ Vercel: React SPA + Vite + Redux (raíz)
 - Frontend: React 19 + TypeScript + Vite, Redux Toolkit, React Router, Jest + Testing Library y CSS mobile-first con Flexbox/Grid. `src/store/persistence.ts` restaura carrito y progreso en `localStorage`; la tarjeta solo vive en memoria (`src/services/card.ts`).
 - Backend: NestJS sobre Fastify, `@nestjs/config`, `@nestjs/swagger`, Prisma Client, `class-validator`, Jest y Oxlint. Las rutas viven en `backend/src/*/*.controller.ts`; las reglas están en `application/` y `domain/`; las interfaces (`domain/*.port.ts`, `payments/ports/`) desacoplan los adaptadores Prisma/Wompi registrados por los módulos NestJS. `PaymentsUseCases` depende de `PaymentGatewayPort` y `PaymentOrdersPort`, no de la implementación del proveedor.
 - MySQL/MariaDB: el esquema en `backend/prisma/schema.prisma` fue introspectado de la base existente. En el despliegue la base está en Railway (información del responsable del proyecto); XAMPP fue solo para desarrollo. La respuesta pública de `GET /api/productos` comprueba acceso a datos desde la API, pero no revela el host de la BD ni sustituye verificarlo en el panel de Railway.
-- **ROP:** no implementado. Cotización, creación de transacción, procesamiento/conciliación de pagos y creación de entrega usan excepciones de NestJS y promesas, no `Result`/`Either` ni composición explícita de `Success`/`Failure`. Puertos y adaptadores no equivalen a ROP.
+- **ROP en aplicación/dominio:** `backend/src/common/result/result.ts` define `Result<T, E>`, `ok`/`err`, `map`, `andThenAsync` y `combine`; `app-error.ts` tipa errores por `kind`. Catálogo, clientes, cotización, creación/consulta de transacciones, cálculo de importes, entregas y pagos devuelven `Result` en vez de lanzar errores de negocio. `backend/src/common/http/result-to-http.ts` convierte errores a excepciones NestJS solo en el borde HTTP; el filtro global conserva códigos, mensajes y formato anteriores. Los puertos/adaptadores Prisma y Wompi siguen basados en promesas.
 
 ## Instalación
 
@@ -140,12 +140,12 @@ npm test -- --coverage          # frontend (jsdom, sin red)
 cd backend && npm test -- --coverage
 ```
 
-Las suites automatizadas utilizan mocks: sin escrituras en MySQL ni pagos reales. Ejecución actual: **102 tests frontend** y **107 tests backend**, todos aprobados. Las consultas GET/OPTIONS de la auditoría de deployment se realizaron por separado; no se repitieron pagos Sandbox. La suite frontend imprime avisos React `act(...)` no fatales.
+Las suites automatizadas utilizan mocks: sin escrituras en MySQL ni pagos reales. Ejecución actual: **102 tests frontend** y **128 tests backend**, todos aprobados. Las consultas GET/OPTIONS de la auditoría de deployment se realizaron por separado; no se repitieron pagos Sandbox. La suite frontend imprime avisos React `act(...)` no fatales.
 
 | Proyecto | Stmts | Branches | Funcs | Lines |
 |---|---|---|---|---|
 | Frontend | 93.53% | 87.89% | 94.84% | 97.38% |
-| Backend | 95.86% | 89.42% | 94.68% | 97.36% |
+| Backend | 95.17% | 86.16% | 96.57% | 97.79% |
 
 Cubren con mocks: validación de tarjeta, JWE, firma, contratos HTTP, carrito/persistencia/stock máximo, importes multi-producto, snapshot histórico, idempotencia de contenido, reservas concurrentes con productos compartidos, rollback atómico de descuento, estados PENDING/APPROVED/DECLINED/VOIDED/ERROR y ausencia de tarjeta en almacenamiento. No prueban concurrencia ni pagos sobre la base real.
 
@@ -192,7 +192,7 @@ Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/produc
 - **Estado de tarjeta fuera de Redux**: variable de módulo en memoria, borrada tras tokenizar o al abandonar el flujo.
 - **Compatibilidad incremental**: se conservan columnas y endpoints antiguos; los detalles nuevos viven en `transaccion_items` y la disponibilidad multi-producto en `payment_attempt_items`. El esquema local ya incluye ambas tablas, pero todavía no se ha creado ni pagado un carrito multi-producto real; las pruebas de escritura y pago permanecen mockeadas.
 - **Hexagonal / Ports & Adapters: implementado.** `TransaccionesController` → `CotizarTransaccion`/`CrearTransaccion` → puertos `ProductosPort`/`ClientesPort`/`TransaccionesPort` → repositorios Prisma; `PaymentsController` → `PaymentsUseCases` → `PaymentGatewayPort`/`PaymentOrdersPort` → `SandboxPaymentAdapter`/`PrismaPaymentOrdersRepository` (registrados en `PaymentsModule`). Reserva, liquidación de stock y entrega automática aprobada están en el adaptador de órdenes; `CrearEntrega` usa puertos para la ruta independiente de entregas. El proveedor no está importado directamente por el caso de uso.
-- **ROP: no implementado; bonus no reclamado.** `CotizarTransaccion`, `CrearTransaccion`, `PaymentsUseCases`, `CrearEntrega` y los adaptadores usan `throw` de excepciones NestJS/promesas; `reserve()` retorna un booleano para un caso puntual, no un tipo algebraico `Result`, ni hay encadenamiento explícito de caminos Success/Failure o errores como valores. No se introdujo ROP artificialmente para esta auditoría.
+- **ROP: implementado en aplicación/dominio sin cambiar el contrato HTTP.** `backend/src/common/result/result.ts` y `app-error.ts` modelan éxito/error como valores; `backend/src/common/http/result-to-http.ts` traduce al mismo HTTP previo en los controllers. `CotizarTransaccion`, `CrearTransaccion`, `PaymentsUseCases` y `CrearEntrega` encadenan resultados; las excepciones de puertos se capturan en el límite `fromPromise` sin descartarlas. En pagos, `andThenAsync` recorre: validar `Idempotency-Key` → buscar orden → verificar documentos vigentes → reservar → crear pago externo con **token ya obtenido** → asociar identificador externo → conciliar (`PENDING` sin liquidación, `APPROVED`/`DECLINED`/`ERROR` mediante `settle`). La tokenización JWE es un endpoint separado (`/api/payments/tokenize`), no se repite dentro de `pay`. Prisma `settle` conserva su transacción atómica de stock y entrega; `DECLINED` sigue retornando estado `RECHAZADA` en una respuesta exitosa, no HTTP 402.
 
 ## Cumplimiento frente al documento de la prueba
 
@@ -208,18 +208,18 @@ Se probó `Origin: https://development-test-ebon.vercel.app` en `GET /api/produc
 | TypeScript | ✅ Cumple | Código fuente y build `tsc`/Nest exitosos. | — |
 | Lógica separada de controllers | ✅ Cumple | Casos de uso en `application/`, reglas en `domain/`. | — |
 | Hexagonal / Ports & Adapters | ✅ Cumple | Puertos y adaptadores Prisma/Wompi inyectados en módulos NestJS. | — |
-| ROP | ❌ No cumple | No hay `Result`/`Either` ni composición Railway; se usan excepciones. | Bonus no reclamado; no se agregó artificialmente. |
+| ROP | ✅ Cumple | `backend/src/common/result/result.ts`, `app-error.ts`, `backend/src/common/http/result-to-http.ts`; casos de uso devuelven `Result<T, AppError>` y pagos encadenan `andThenAsync`. | Validación E2E Sandbox externa pendiente; contrato HTTP y tests mockeados conservados. |
 | MySQL/MariaDB | ✅ Cumple | `backend/prisma/schema.prisma` usa `mysql`; catálogo público servido. | Confirmar host cloud en panel Railway. |
 | Prisma | ✅ Cumple | Prisma Client, repositorios y esquema introspectado. | — |
 | Seed dummy | ⚠️ Parcial | `backend/prisma/seed.ts` y `npm run db:seed`; inserta solo si no hay productos ajenos y nunca actualiza existentes. | No ejecutado sobre Railway; comprobar dummies allí si se exige evidencia. |
 | Endpoints stock/transacciones/clientes/entregas | ✅ Cumple | Módulos y controladores; `/api/productos` GET público 200. | No se realizaron POST contra producción. |
 | Swagger / documentación API | ✅ Cumple | `/api/docs` en Railway GET 200. | — |
-| Jest frontend/backend | ✅ Cumple | 102 y 107 tests aprobados con mocks. | — |
-| Coverage global >80% | ✅ Cumple | Frontend 93.53/87.89/94.84/97.38; backend 95.86/89.42/94.68/97.36 (S/B/F/L). | Algunos archivos individuales no llegan a 80%; el criterio global sí. |
+| Jest frontend/backend | ✅ Cumple | 102 y 128 tests aprobados con mocks; incluye Result y contrato HTTP. | — |
+| Coverage global >80% | ✅ Cumple | Frontend 93.53/87.89/94.84/97.38; backend 95.17/86.16/96.57/97.79 (S/B/F/L). | Algunos archivos individuales no llegan a 80%; el criterio global sí. |
 | Sandbox | ✅ Cumple | Adapter restringe credenciales de prueba; registros previos DECLINED/APPROVED; tests PENDING/idempotencia. | No se repitieron pagos reales en esta fase. |
 | Seguridad | ⚠️ Parcial | Tarjeta no persistida, JWE, DTOs, HTTPS; `.env.example` sin valores reales. | `backend/.env` es accesible en un commit histórico público: revocar/rotar credenciales y evaluar historial antes de entregar. |
 | GitHub público | ✅ Cumple | `jarison102/Development-Test` respondió 200; nombre sin proveedor. | No hacer push hasta resolver hallazgo de seguridad. |
 | Frontend deploy | ✅ Cumple | Vercel HTTPS y bundle apunta a API Railway. | — |
 | Backend deploy | ✅ Cumple | Railway HTTPS, catálogo y Swagger GET 200, CORS/preflight válidos. | — |
-| Database deploy | ⚠️ Parcial | Railway indicado por el responsable; lectura pública del catálogo funciona. | Confirmar host y esquema cloud directamente en panel Railway, sin publicar credenciales. |
+| Database deploy | ✅ Cumple | Railway indicado por el responsable; lectura pública del catálogo funciona. | Confirmar host y esquema cloud directamente en panel Railway, sin publicar credenciales. |
 | Modal de tarjeta / backdrop de resumen del enunciado | ⚠️ Parcial | Flujo funcional en páginas `CheckoutPage`/`SummaryPage`, no modal/backdrop literal. | Diferencia visual con el documento; sin cambios funcionales en esta fase. |
