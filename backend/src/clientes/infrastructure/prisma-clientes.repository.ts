@@ -18,7 +18,11 @@ export class PrismaClientesRepository implements ClientesPort {
   }
 
   async crear(data: NuevoCliente): Promise<Cliente> {
-    const row = await this.prisma.clientes.create({ data })
+    const row = await this.prisma.clientes.upsert({
+      where: { correo: data.correo },
+      update: { nombre: data.nombre, telefono: data.telefono },
+      create: data,
+    })
     return mapCliente(row)
   }
 }
